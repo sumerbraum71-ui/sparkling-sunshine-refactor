@@ -7,11 +7,12 @@ import {
   XCircle, Loader2, LayoutGrid, Zap, Database, Bell, BellOff, TrendingUp, DollarSign, Users, MessageCircle, Link, RotateCcw, Ban, Ticket, Shield, CreditCard, Wallet
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import useOrderNotification from '@/hooks/useOrderNotification';
 import OrderChat from '@/components/OrderChat';
 import UserManagement from '@/components/admin/UserManagement';
 import CouponManagement from '@/components/admin/CouponManagement';
-import RechargeManagement from '@/components/admin/RechargeManagement';
-import PaymentMethodsManagement from '@/components/admin/PaymentMethodsManagement';
+import { RechargeManagement } from '@/components/admin/RechargeManagement';
+import { PaymentMethodsManagement } from '@/components/admin/PaymentMethodsManagement';
 
 interface Product {
   id: string;
@@ -26,8 +27,8 @@ interface Product {
 
 interface StockItem {
   id: string;
+  product_id: string | null;
   product_option_id: string | null;
-  option_id: string | null;
   content: string;
   is_sold: boolean;
 }
@@ -58,22 +59,23 @@ interface Order {
   token_id: string | null;
   product_id: string | null;
   product_option_id: string | null;
-  total_price: number;
+  amount: number;
   status: string;
   created_at: string;
   email: string | null;
   password: string | null;
   verification_link: string | null;
+  response_message: string | null;
 }
 
 interface RefundRequest {
   id: string;
   token_id: string | null;
-  order_id: string | null;
-  reason: string;
+  order_number: string;
+  reason: string | null;
   status: string;
   created_at: string;
-  updated_at: string;
+  processed_at: string | null;
   admin_notes: string | null;
 }
 
@@ -96,19 +98,20 @@ const OrderCard = ({
   productOptions
 }: {
   order: Order;
-  onUpdateStatus: (id: string, status: string) => void;
+  onUpdateStatus: (id: string, status: string, message?: string) => void;
   onDelete: (id: string) => void;
   onRequestNewLink: (orderId: string) => void;
   products: Product[];
   productOptions: ProductOption[];
 }) => {
+  const [message, setMessage] = useState(order.response_message || '');
   const [selectedStatus, setSelectedStatus] = useState(order.status);
   const [showPassword, setShowPassword] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = () => {
-    onUpdateStatus(order.id, selectedStatus);
+    onUpdateStatus(order.id, selectedStatus, message);
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -163,7 +166,7 @@ const OrderCard = ({
 
         {/* Amount & Verification Link */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xl font-bold text-primary">{order.total_price} ر.س</span>
+          <span className="text-xl font-bold text-primary">${order.amount}</span>
 
           {order.verification_link && (
             <div className="flex items-center gap-2">
@@ -226,7 +229,15 @@ const OrderCard = ({
             ))}
           </select>
 
-          <div className="flex gap-2 flex-1">
+          <input
+            type="text"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            className="input-field text-sm py-2.5 flex-1"
+            placeholder="رسالة للعميل (اختياري)..."
+          />
+
+          <div className="flex gap-2">
             <button onClick={handleSubmit} className="btn-primary px-4 py-2.5 flex items-center gap-2">
               <Save className="w-4 h-4" />
               <span>حفظ</span>
@@ -278,7 +289,7 @@ const RefundCard = ({
   const [showApproveForm, setShowApproveForm] = useState(false);
   const [rejectNote, setRejectNote] = useState('');
   const [approveNote, setApproveNote] = useState('');
-  const [refundAmount, setRefundAmount] = useState(orderInfo?.total_price?.toString() || '0');
+  const [refundAmount, setRefundAmount] = useState(orderInfo?.amount?.toString() || '0');
 
   const handleReject = () => {
     onReject(refund.id, rejectNote);
@@ -333,21 +344,19 @@ const RefundCard = ({
             <span className="text-muted-foreground">التوكن:</span>
             <span className="font-mono bg-muted px-2 py-0.5 rounded">{tokenValue || '---'}</span>
           </div>
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">رقم الطلب:</span>
+            <span className="font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-bold">
+              #{refund.order_number}
+            </span>
+          </div>
           {orderInfo && (
-            <>
-              <div className="flex items-center gap-2">
-                <ShoppingBag className="w-4 h-4 text-muted-foreground" />
-                <span className="text-muted-foreground">رقم الطلب:</span>
-                <span className="font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-bold">
-                  #{orderInfo.order_number}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-primary" />
-                <span className="text-muted-foreground">المبلغ:</span>
-                <span className="font-bold text-primary">{orderInfo.total_price} ر.س</span>
-              </div>
-            </>
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-primary" />
+              <span className="text-muted-foreground">المبلغ:</span>
+              <span className="font-bold text-primary">${orderInfo.amount}</span>
+            </div>
           )}
         </div>
 
@@ -404,20 +413,20 @@ const RefundCard = ({
               <label className="text-sm font-medium mb-2 block">مبلغ الاسترداد</label>
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">ر.س</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                   <input
                     type="number"
                     value={refundAmount}
                     onChange={(e) => setRefundAmount(e.target.value)}
-                    className="input-field w-full pr-12"
+                    className="input-field w-full pr-8"
                     min="0"
-                    max={orderInfo?.total_price || 0}
+                    max={orderInfo?.amount || 0}
                     step="0.01"
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => setRefundAmount(orderInfo?.total_price?.toString() || '0')}
+                  onClick={() => setRefundAmount(orderInfo?.amount?.toString() || '0')}
                   className="px-3 py-2 text-xs bg-muted hover:bg-muted/80 rounded-lg transition-colors"
                 >
                   المبلغ كامل
@@ -425,7 +434,7 @@ const RefundCard = ({
               </div>
               {orderInfo && (
                 <p className="text-xs text-muted-foreground mt-1">
-                  المبلغ الأصلي للطلب: {orderInfo.total_price} ر.س
+                  المبلغ الأصلي للطلب: ${orderInfo.amount}
                 </p>
               )}
             </div>
@@ -445,7 +454,7 @@ const RefundCard = ({
                 className="flex-1 py-2 bg-success text-success-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                استرداد {refundAmount || '0'} ر.س
+                استرداد ${refundAmount || '0'}
               </button>
               <button
                 onClick={() => { setShowApproveForm(false); setApproveNote(''); }}
@@ -485,6 +494,12 @@ const RefundCard = ({
               </button>
             </div>
           </div>
+        )}
+
+        {refund.processed_at && (
+          <p className="text-xs text-muted-foreground">
+            تم المعالجة: {new Date(refund.processed_at).toLocaleDateString('ar-EG')}
+          </p>
         )}
       </div>
     </div>
@@ -536,7 +551,7 @@ const ProductCard = ({
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
               {product.price > 0 && (
-                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md font-medium">{product.price} ر.س</span>
+                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md font-medium">${product.price}</span>
               )}
               {product.duration && (
                 <span className="flex items-center gap-1">
@@ -617,7 +632,7 @@ const ProductCard = ({
                           {option.type === 'none' ? 'استلام فوري' : option.type === 'email_password' ? 'إيميل وباسورد' : option.type === 'link' ? 'رابط فقط' : option.type === 'text' ? 'نص' : 'استلام فوري'}
                         </span>
                         {option.price > 0 && (
-                          <span className="text-primary font-medium">{option.price} ر.س</span>
+                          <span className="text-primary font-medium">${option.price}</span>
                         )}
                         {option.estimated_time && (
                           <span className="flex items-center gap-1">
@@ -729,12 +744,26 @@ const Admin = () => {
   // Token search state
   const [tokenSearch, setTokenSearch] = useState<string>('');
 
+  // Order notification callback
+  const handleNewOrderNotification = useCallback(async () => {
+    if (activeTab === 'orders') {
+      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      setOrders(data || []);
+    }
+    // Also refresh stats
+    fetchTodayStats();
+  }, [activeTab]);
+
+  // Use order notification hook
+  useOrderNotification(handleNewOrderNotification, notificationsEnabled);
+
   // Fetch today's statistics
   const fetchTodayStats = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayISO = today.toISOString();
 
+    // Get today's orders
     const { data: todayOrders } = await supabase
       .from('orders')
       .select('*')
@@ -743,10 +772,12 @@ const Admin = () => {
     if (todayOrders) {
       const totalEarnings = todayOrders
         .filter(o => o.status === 'completed')
-        .reduce((sum, o) => sum + Number(o.total_price), 0);
+        .reduce((sum, o) => sum + Number(o.amount || o.total_price), 0);
 
       const completedOrders = todayOrders.filter(o => o.status === 'completed').length;
       const totalOrders = todayOrders.length;
+
+      // Count recharges (orders with token_id)
       const totalRecharges = todayOrders.filter(o => o.token_id).length;
 
       setTodayStats({
@@ -769,38 +800,14 @@ const Admin = () => {
     }
   }, [activeTab, isLoading]);
 
-  // Subscribe to new orders
-  useEffect(() => {
-    if (!notificationsEnabled) return;
-
-    const channel = supabase
-      .channel('admin-orders-notification')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'orders' },
-        () => {
-          try {
-            const audio = new Audio('/notification.mp3');
-            audio.play().catch(() => {});
-          } catch {}
-          fetchData();
-          fetchTodayStats();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [notificationsEnabled, activeTab]);
-
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.user) {
-      navigate('/admin/auth');
+      navigate('/admin/login');
       return;
     }
 
+    // Check if user is admin
     const { data: adminCheck } = await supabase.rpc('has_role', {
       _user_id: session.user.id,
       _role: 'admin',
@@ -808,6 +815,7 @@ const Admin = () => {
 
     if (adminCheck) {
       setIsAdmin(true);
+      // Admin has all permissions
       setUserPermissions({
         can_manage_orders: true,
         can_manage_products: true,
@@ -821,11 +829,14 @@ const Admin = () => {
       return;
     }
 
-    const { data: permissions } = await supabase
+    // Check if user has any permissions
+    const { data: permissions, error: permError } = await supabase
       .from('user_permissions')
       .select('*')
       .eq('user_id', session.user.id)
       .maybeSingle();
+
+    console.log('Permissions check:', { permissions, permError, userId: session.user.id });
 
     const hasAnyPermission = permissions && (
       (permissions as any).can_manage_orders ||
@@ -838,10 +849,11 @@ const Admin = () => {
 
     if (!hasAnyPermission) {
       await supabase.auth.signOut();
-      navigate('/admin/auth');
+      navigate('/admin/login');
       return;
     }
 
+    // Store permissions
     setUserPermissions({
       can_manage_orders: (permissions as any).can_manage_orders || false,
       can_manage_products: (permissions as any).can_manage_products || false,
@@ -851,6 +863,7 @@ const Admin = () => {
       can_manage_coupons: (permissions as any).can_manage_coupons || false,
     });
 
+    // Set default tab based on permissions
     if ((permissions as any).can_manage_orders) setActiveTab('orders');
     else if ((permissions as any).can_manage_products) setActiveTab('products');
     else if ((permissions as any).can_manage_tokens) setActiveTab('tokens');
@@ -865,24 +878,28 @@ const Admin = () => {
       const { data: productsData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
       const { data: optionsData } = await supabase.from('product_options').select('*');
       const { data: stockData } = await supabase.from('stock_items').select('*').eq('is_sold', false);
-      setProducts((productsData || []).map(p => ({ ...p, price: p.price || 0, instant_delivery: false })));
+      setProducts(productsData || []);
       setProductOptions((optionsData || []).map(opt => ({ ...opt, is_active: opt.is_active ?? true })));
       setStockItems(stockData || []);
     } else if (activeTab === 'tokens') {
       const { data } = await supabase.from('tokens').select('*').order('created_at', { ascending: false });
-      setTokens((data || []).map(t => ({ ...t, is_blocked: t.is_blocked ?? false })));
+      setTokens(data || []);
     } else if (activeTab === 'orders') {
       const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      setOrders((data || []).map(o => ({ ...o, order_number: o.order_number || o.id.slice(0, 8) })));
+      setOrders(data || []);
+      // Also fetch products and options for display
+      const { data: productsData } = await supabase.from('products').select('*');
+      const { data: optionsData } = await supabase.from('product_options').select('*');
+      setProducts(productsData || []);
+      setProductOptions((optionsData || []).map(opt => ({ ...opt, is_active: opt.is_active ?? true })));
     } else if (activeTab === 'refunds') {
-      const { data } = await supabase.from('refund_requests').select('*').order('created_at', { ascending: false });
-      setRefundRequests(data || []);
+      const { data: refundsData } = await supabase.from('refund_requests').select('*').order('created_at', { ascending: false });
+      const { data: ordersData } = await supabase.from('orders').select('*');
+      const { data: tokensData } = await supabase.from('tokens').select('*');
+      setRefundRequests(refundsData || []);
+      setOrders(ordersData || []);
+      setTokens(tokensData || []);
     }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/admin/auth');
   };
 
   // Product handlers
@@ -932,9 +949,10 @@ const Admin = () => {
         .from('products')
         .update({
           name: productForm.name,
-          price: productForm.price || null,
+          price: productForm.price,
           duration: productForm.duration || null,
-          available: productForm.available || null
+          available: productForm.available,
+          instant_delivery: productForm.instant_delivery
         })
         .eq('id', editingProduct.id);
 
@@ -944,56 +962,54 @@ const Admin = () => {
         toast({ title: 'تم', description: 'تم تحديث المنتج بنجاح' });
       }
     } else {
-      const { data: newProduct, error } = await supabase
+      // Create product first
+      const { data: newProduct, error: productError } = await supabase
         .from('products')
         .insert({
           name: productForm.name,
-          price: productForm.price || null,
+          price: productForm.price,
           duration: productForm.duration || null,
-          available: productForm.available || null
+          available: productForm.available,
+          instant_delivery: productForm.instant_delivery
         })
-        .select()
+        .select('id')
         .single();
 
-      if (error) {
-        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      if (productError || !newProduct) {
+        toast({ title: 'خطأ', description: productError?.message || 'فشل في إضافة المنتج', variant: 'destructive' });
         return;
       }
 
-      // Add product options
-      for (const opt of newProductOptions) {
-        if (!opt.name) continue;
-
-        const typeToSave = opt.delivery_type === 'auto' ? 'none' : opt.input_type;
-
-        const { data: insertedOption, error: optError } = await supabase
-          .from('product_options')
-          .insert({
+      // Add options if any
+      if (newProductOptions.length > 0) {
+        for (const opt of newProductOptions.filter(o => o.name.trim())) {
+          // Insert the option
+          const { data: insertedOption, error: optError } = await supabase.from('product_options').insert({
             product_id: newProduct.id,
             name: opt.name,
-            price: opt.price || 0,
+            type: opt.delivery_type === 'auto' ? 'none' : (opt.input_type || 'email_password'),
             description: opt.description || null,
             estimated_time: opt.estimated_time || null,
-            type: typeToSave,
-            duration: opt.duration || null,
-            is_active: true
-          })
-          .select()
-          .single();
+            price: opt.price || 0,
+            duration: opt.duration || null
+          }).select('id').single();
 
-        if (optError) continue;
+          if (optError || !insertedOption) {
+            toast({ title: 'تحذير', description: 'فشل في إضافة بعض المنتجات', variant: 'destructive' });
+            continue;
+          }
 
-        // If auto delivery, add stock items for this option
-        if (opt.delivery_type === 'auto' && opt.stock_content.trim()) {
-          const items = opt.stock_content.split('\n').filter(item => item.trim());
-          if (items.length > 0) {
-            const stockToInsert = items.map(content => ({
-              product_option_id: insertedOption.id,
-              option_id: insertedOption.id,
-              content: content.trim(),
-              is_sold: false
-            }));
-            await supabase.from('stock_items').insert(stockToInsert);
+          // If auto delivery, add stock items for this option
+          if (opt.delivery_type === 'auto' && opt.stock_content.trim()) {
+            const items = opt.stock_content.split('\n').filter(item => item.trim());
+            if (items.length > 0) {
+              const stockToInsert = items.map(content => ({
+                product_option_id: insertedOption.id,
+                content: content.trim(),
+                is_sold: false
+              }));
+              await supabase.from('stock_items').insert(stockToInsert);
+            }
           }
         }
       }
@@ -1173,10 +1189,10 @@ const Admin = () => {
   };
 
   // Order handlers
-  const handleUpdateOrderStatus = async (id: string, status: string) => {
+  const handleUpdateOrderStatus = async (id: string, status: string, message?: string) => {
     const { error } = await supabase
       .from('orders')
-      .update({ status })
+      .update({ status, response_message: message || null })
       .eq('id', id);
 
     if (error) {
@@ -1200,6 +1216,7 @@ const Admin = () => {
   };
 
   const handleRequestNewLink = async (orderId: string) => {
+    // Send a message to the customer requesting a new link
     const { error } = await supabase.from('order_messages').insert({
       order_id: orderId,
       sender_type: 'admin',
@@ -1215,18 +1232,27 @@ const Admin = () => {
 
   // Refund handlers
   const handleApproveRefund = async (refund: RefundRequest, adminNote: string, refundAmount: number) => {
-    const orderInfo = orders.find(o => o.id === refund.order_id);
-    
-    if (!orderInfo) {
+    // Get the order info using order_number
+    const { data: orderData } = await supabase
+      .from('orders')
+      .select('amount, token_id, total_price')
+      .eq('order_number', refund.order_number)
+      .maybeSingle();
+
+    if (!orderData) {
       toast({ title: 'خطأ', description: 'لم يتم العثور على الطلب', variant: 'destructive' });
       return;
     }
 
-    if (refundAmount > Number(orderInfo.total_price)) {
+    const orderAmount = orderData.amount || orderData.total_price;
+
+    // Validate refund amount
+    if (refundAmount > Number(orderAmount)) {
       toast({ title: 'خطأ', description: 'مبلغ الاسترداد أكبر من مبلغ الطلب', variant: 'destructive' });
       return;
     }
 
+    // Get the token using token_id from refund
     const { data: tokenData } = await supabase
       .from('tokens')
       .select('id, balance')
@@ -1238,6 +1264,7 @@ const Admin = () => {
       return;
     }
 
+    // Refund the specified amount to the token
     const newBalance = Number(tokenData.balance) + refundAmount;
     const { error: balanceError } = await supabase
       .from('tokens')
@@ -1249,10 +1276,12 @@ const Admin = () => {
       return;
     }
 
+    // Update refund request status
     const { error: refundError } = await supabase
       .from('refund_requests')
       .update({
         status: 'approved',
+        processed_at: new Date().toISOString(),
         admin_notes: adminNote || null
       })
       .eq('id', refund.id);
@@ -1262,7 +1291,7 @@ const Admin = () => {
       return;
     }
 
-    toast({ title: 'تم', description: `تم استرداد ${refundAmount} ر.س للتوكن` });
+    toast({ title: 'تم', description: `تم استرداد $${refundAmount} للتوكن` });
     fetchData();
   };
 
@@ -1271,6 +1300,7 @@ const Admin = () => {
       .from('refund_requests')
       .update({
         status: 'rejected',
+        processed_at: new Date().toISOString(),
         admin_notes: adminNote || null
       })
       .eq('id', refundId);
@@ -1299,7 +1329,6 @@ const Admin = () => {
 
     const stockToInsert = items.map(content => ({
       product_option_id: currentStockOptionId || currentStockProductId,
-      option_id: currentStockOptionId,
       content: content.trim(),
       is_sold: false
     }));
@@ -1320,7 +1349,7 @@ const Admin = () => {
   };
 
   const getOptionStockCount = (optionId: string) => {
-    return stockItems.filter(s => s.option_id === optionId && !s.is_sold).length;
+    return stockItems.filter(s => s.product_option_id === optionId && !s.is_sold).length;
   };
 
   // Filter orders
@@ -1342,7 +1371,7 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background font-cairo">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-card border-b border-border sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4">
@@ -1367,11 +1396,14 @@ const Admin = () => {
                 title={notificationsEnabled ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات'}
               >
                 {notificationsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-                <span className="hidden sm:inline text-sm">{notificationsEnabled ? 'الإشعارات مفعلة' : 'الإشعارات متوقفة'}</span>
+                <span className="hidden sm:inline">{notificationsEnabled ? 'الإشعارات' : 'صامت'}</span>
               </button>
               <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  navigate('/admin/login');
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
               >
                 <LogOut className="w-5 h-5" />
                 <span className="hidden sm:inline">خروج</span>
@@ -1398,7 +1430,7 @@ const Admin = () => {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                onClick={() => setActiveTab(tab.id as 'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods')}
                 className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
@@ -1428,40 +1460,43 @@ const Admin = () => {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">أرباح اليوم</p>
-                <p className="text-xl font-bold text-success">{todayStats.totalEarnings} ر.س</p>
+                <p className="text-xl font-bold text-success">${todayStats.totalEarnings}</p>
               </div>
             </div>
           </div>
+
           <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <ShoppingBag className="w-5 h-5 text-primary" />
+                <TrendingUp className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">طلبات اليوم</p>
-                <p className="text-xl font-bold">{todayStats.totalOrders}</p>
+                <p className="text-xl font-bold text-primary">{todayStats.totalOrders}</p>
               </div>
             </div>
           </div>
+
           <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center">
                 <CheckCircle2 className="w-5 h-5 text-info" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">مكتملة</p>
-                <p className="text-xl font-bold">{todayStats.completedOrders}</p>
+                <p className="text-xs text-muted-foreground">طلبات مكتملة</p>
+                <p className="text-xl font-bold text-info">{todayStats.completedOrders}</p>
               </div>
             </div>
           </div>
+
           <div className="bg-card rounded-xl border border-border p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5 text-warning" />
+                <Users className="w-5 h-5 text-warning" />
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">عمليات الشحن</p>
-                <p className="text-xl font-bold">{todayStats.totalRecharges}</p>
+                <p className="text-xs text-muted-foreground">شحنات اليوم</p>
+                <p className="text-xl font-bold text-warning">{todayStats.totalRecharges}</p>
               </div>
             </div>
           </div>
@@ -1563,6 +1598,7 @@ const Admin = () => {
         {activeTab === 'tokens' && (
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-3 justify-between">
+              {/* Search Box */}
               <div className="relative flex-1 max-w-md">
                 <input
                   type="text"
@@ -1606,7 +1642,7 @@ const Admin = () => {
                             <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-md">محظور</span>
                           )}
                         </div>
-                        <span className={`text-lg font-bold ${token.is_blocked ? 'text-muted-foreground' : 'text-primary'}`}>{token.balance} ر.س</span>
+                        <span className={`text-lg font-bold ${token.is_blocked ? 'text-muted-foreground' : 'text-primary'}`}>${token.balance}</span>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -1651,6 +1687,7 @@ const Admin = () => {
               </h2>
             </div>
 
+            {/* Refund Status Filter */}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setRefundStatusFilter('all')}
@@ -1694,7 +1731,7 @@ const Admin = () => {
             ) : (
               <div className="grid gap-4">
                 {filteredRefunds.map(refund => {
-                  const orderInfo = orders.find(o => o.id === refund.order_id);
+                  const orderInfo = orders.find(o => o.order_number === refund.order_number);
                   const tokenInfo = tokens.find(t => t.id === refund.token_id);
 
                   return (
@@ -1712,24 +1749,13 @@ const Admin = () => {
             )}
           </div>
         )}
-
-        {/* Users Tab */}
-        {activeTab === 'users' && <UserManagement />}
-
-        {/* Coupons Tab */}
-        {activeTab === 'coupons' && <CouponManagement />}
-
-        {/* Recharges Tab */}
-        {activeTab === 'recharges' && <RechargeManagement />}
-
-        {/* Payment Methods Tab */}
-        {activeTab === 'payment_methods' && <PaymentMethodsManagement />}
       </div>
 
       {/* Product Modal */}
       {showProductModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-card rounded-2xl w-full max-w-2xl shadow-2xl my-8">
+            {/* Header */}
             <div className="p-6 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Package className="w-5 h-5 text-primary" />
@@ -1739,17 +1765,18 @@ const Admin = () => {
             </div>
 
             <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
+              {/* Section 1: Basic Info */}
               <div className="bg-muted/20 rounded-xl p-4 border border-border">
-                <h3 className="text-sm font-bold text-primary mb-4 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
-                  معلومات القسم الأساسية
+                <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded bg-primary/10 text-primary flex items-center justify-center text-xs">1</span>
+                  معلومات القسم
                 </h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">اسم القسم *</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">اسم القسم *</label>
                     <input
                       type="text"
-                      placeholder="مثال: حسابات جيميل، حسابات نتفليكس..."
+                      placeholder="مثال: حسابات جيميل"
                       value={productForm.name}
                       onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
                       className="input-field w-full"
@@ -1758,24 +1785,23 @@ const Admin = () => {
                 </div>
               </div>
 
+              {/* Section 2: Add Products (Only for new product) */}
               {!editingProduct && (
-                <div className="bg-primary/5 rounded-xl p-4 border border-primary/20">
+                <div className="bg-muted/20 rounded-xl p-4 border border-border">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-bold text-primary flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
-                      المنتجات (الخيارات المتاحة)
+                    <h3 className="text-sm font-semibold flex items-center gap-2">
+                      <span className="w-6 h-6 rounded bg-primary/10 text-primary flex items-center justify-center text-xs">2</span>
+                      المنتجات داخل القسم
                     </h3>
                     <button
                       type="button"
                       onClick={addNewProductOption}
-                      className="bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded-lg flex items-center gap-1 font-medium hover:bg-primary/90 transition-colors"
+                      className="text-sm text-primary hover:text-primary/80 flex items-center gap-1 font-medium"
                     >
-                      <Plus className="w-4 h-4" /> إضافة منتج
+                      <Plus className="w-4 h-4" />
+                      إضافة منتج
                     </button>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-4">
-                    مثال: لو القسم "حسابات جيميل" → المنتجات تكون: "شهر واحد"، "شهرين"، "3 شهور"
-                  </p>
 
                   {newProductOptions.length === 0 ? (
                     <div className="text-center py-8 bg-background/50 rounded-lg border-2 border-dashed border-border">
@@ -1801,6 +1827,7 @@ const Admin = () => {
                             </button>
                           </div>
 
+                          {/* Row 1: Name, Duration, Price */}
                           <div className="grid grid-cols-3 gap-3 mb-3">
                             <div>
                               <label className="text-xs text-muted-foreground mb-1 block">اسم المنتج *</label>
@@ -1823,55 +1850,57 @@ const Admin = () => {
                               />
                             </div>
                             <div>
-                              <label className="text-xs text-muted-foreground mb-1 block">السعر (ر.س)</label>
+                              <label className="text-xs text-muted-foreground mb-1 block">السعر ($) *</label>
                               <input
                                 type="number"
                                 placeholder="0"
-                                value={opt.price}
+                                value={opt.price || ''}
                                 onChange={(e) => updateNewProductOption(index, 'price', parseFloat(e.target.value) || 0)}
                                 className="input-field text-sm w-full"
                               />
                             </div>
                           </div>
 
+                          {/* Row 2: Delivery Type */}
                           <div className="mb-3">
-                            <label className="text-xs text-muted-foreground mb-1 block">نوع التسليم</label>
+                            <label className="text-xs text-muted-foreground mb-2 block">نوع التسليم</label>
                             <div className="flex gap-2">
                               <button
                                 type="button"
                                 onClick={() => updateNewProductOption(index, 'delivery_type', 'manual')}
-                                className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                                className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                                   opt.delivery_type === 'manual'
                                     ? 'bg-warning/10 border-warning text-warning'
                                     : 'border-border hover:bg-muted'
                                 }`}
                               >
-                                <Clock className="w-3 h-3" />
-                                يدوي
+                                <Clock className="w-4 h-4" />
+                                يدوي (خدمات)
                               </button>
                               <button
                                 type="button"
                                 onClick={() => updateNewProductOption(index, 'delivery_type', 'auto')}
-                                className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                                className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                                   opt.delivery_type === 'auto'
                                     ? 'bg-success/10 border-success text-success'
                                     : 'border-border hover:bg-muted'
                                 }`}
                               >
-                                <Zap className="w-3 h-3" />
-                                تلقائي
+                                <Zap className="w-4 h-4" />
+                                تلقائي (اكونتات)
                               </button>
                             </div>
                           </div>
 
+                          {/* Manual: Show input type required from customer */}
                           {opt.delivery_type === 'manual' && (
-                            <div className="grid grid-cols-2 gap-3 p-2 bg-warning/5 rounded-lg">
+                            <div className="grid grid-cols-2 gap-3 mb-3 p-3 bg-warning/5 rounded-lg border border-warning/20">
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">البيانات المطلوبة</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">البيانات المطلوبة من العميل</label>
                                 <select
                                   value={opt.input_type}
                                   onChange={(e) => updateNewProductOption(index, 'input_type', e.target.value)}
-                                  className="input-field text-xs w-full"
+                                  className="input-field text-sm w-full"
                                 >
                                   <option value="email_password">إيميل وباسورد</option>
                                   <option value="link">رابط فقط</option>
@@ -1879,32 +1908,47 @@ const Admin = () => {
                                 </select>
                               </div>
                               <div>
-                                <label className="text-xs text-muted-foreground mb-1 block">الوقت المتوقع</label>
+                                <label className="text-xs text-muted-foreground mb-1 block">الوقت المتوقع للتنفيذ</label>
                                 <input
                                   type="text"
-                                  placeholder="24 ساعة"
+                                  placeholder="مثال: 24 ساعة"
                                   value={opt.estimated_time}
                                   onChange={(e) => updateNewProductOption(index, 'estimated_time', e.target.value)}
-                                  className="input-field text-xs w-full"
+                                  className="input-field text-sm w-full"
                                 />
                               </div>
                             </div>
                           )}
 
+                          {/* Auto: Show stock content input */}
                           {opt.delivery_type === 'auto' && (
-                            <div className="p-2 bg-success/5 rounded-lg">
-                              <label className="text-xs text-muted-foreground mb-1 block">المخزون (كل سطر = عنصر)</label>
+                            <div className="p-3 bg-success/5 rounded-lg border border-success/20 mb-3">
+                              <label className="text-xs text-muted-foreground mb-1 block">
+                                الداتا للعميل (كل سطر = منتج واحد)
+                              </label>
                               <textarea
+                                placeholder={`مثال:\nemail1@gmail.com:password123\nemail2@gmail.com:password456`}
                                 value={opt.stock_content}
                                 onChange={(e) => updateNewProductOption(index, 'stock_content', e.target.value)}
-                                className="input-field w-full h-20 text-xs font-mono"
-                                placeholder="email1@example.com:password1&#10;email2@example.com:password2"
+                                className="input-field text-sm w-full h-24 resize-none font-mono"
                               />
                               <p className="text-xs text-muted-foreground mt-1">
-                                {opt.stock_content.split('\n').filter(l => l.trim()).length} عنصر
+                                المخزون الحالي: {opt.stock_content.split('\n').filter(line => line.trim()).length} منتج
                               </p>
                             </div>
                           )}
+
+                          {/* Description */}
+                          <div>
+                            <label className="text-xs text-muted-foreground mb-1 block">وصف (اختياري)</label>
+                            <input
+                              type="text"
+                              placeholder="وصف مختصر للمنتج..."
+                              value={opt.description}
+                              onChange={(e) => updateNewProductOption(index, 'description', e.target.value)}
+                              className="input-field w-full text-sm"
+                            />
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1913,12 +1957,13 @@ const Admin = () => {
               )}
             </div>
 
-            <div className="p-6 border-t border-border flex gap-3">
-              <button onClick={handleSaveProduct} className="btn-primary flex-1 py-3 flex items-center justify-center gap-2">
-                <Save className="w-4 h-4" />
-                {editingProduct ? 'حفظ التغييرات' : 'إضافة القسم'}
+            {/* Footer */}
+            <div className="p-6 border-t border-border bg-muted/20 flex gap-3">
+              <button onClick={handleSaveProduct} className="btn-primary flex-1 py-3 flex items-center justify-center gap-2 text-base">
+                <Save className="w-5 h-5" />
+                {editingProduct ? 'حفظ التغييرات' : 'إنشاء القسم'}
               </button>
-              <button onClick={() => setShowProductModal(false)} className="px-6 py-3 border border-border rounded-lg hover:bg-muted transition-colors">
+              <button onClick={() => setShowProductModal(false)} className="px-8 py-3 border border-border rounded-lg hover:bg-muted transition-colors font-medium">
                 إلغاء
               </button>
             </div>
@@ -1929,27 +1974,35 @@ const Admin = () => {
       {/* Option Modal */}
       {showOptionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-xl border border-border w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card">
-              <h2 className="text-lg font-bold">{editingOption ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
-              <button onClick={() => setShowOptionModal(false)} className="p-2 hover:bg-muted rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
+          <div className="bg-card rounded-2xl w-full max-w-md shadow-2xl">
+            <div className="p-6 border-b border-border">
+              <h2 className="text-xl font-bold">{editingOption ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
             </div>
-            <div className="p-4 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto">
+              {/* Row 1: Name, Duration, Price */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-2 block">اسم المنتج *</label>
                   <input
                     type="text"
-                    placeholder="مثال: شهر واحد"
+                    placeholder="مثال: نتفليكس برايم"
                     value={optionForm.name}
                     onChange={(e) => setOptionForm({ ...optionForm, name: e.target.value })}
                     className="input-field w-full"
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground mb-2 block">السعر (ر.س) *</label>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">مدة الاشتراك</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: شهر واحد"
+                    value={optionForm.duration}
+                    onChange={(e) => setOptionForm({ ...optionForm, duration: e.target.value })}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">السعر ($) *</label>
                   <input
                     type="number"
                     placeholder="0"
@@ -1960,6 +2013,7 @@ const Admin = () => {
                 </div>
               </div>
 
+              {/* Delivery Type */}
               <div>
                 <label className="text-sm font-medium text-muted-foreground mb-2 block">نوع التسليم</label>
                 <div className="flex gap-2">
@@ -1990,6 +2044,7 @@ const Admin = () => {
                 </div>
               </div>
 
+              {/* Manual: Show input type required from customer */}
               {optionForm.delivery_type === 'manual' && (
                 <div className="grid grid-cols-2 gap-3 p-3 bg-warning/5 rounded-lg border border-warning/20">
                   <div>
@@ -2017,6 +2072,7 @@ const Admin = () => {
                 </div>
               )}
 
+              {/* Auto: Show stock management */}
               {optionForm.delivery_type === 'auto' && (
                 <div className="p-3 bg-success/5 rounded-lg border border-success/20 space-y-3">
                   <div className="flex items-center justify-between">
@@ -2051,6 +2107,7 @@ const Admin = () => {
                 </div>
               )}
 
+              {/* Status Toggle */}
               <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
                 <div>
                   <p className="text-sm font-medium">حالة الخدمة</p>
@@ -2071,6 +2128,7 @@ const Admin = () => {
                 </button>
               </div>
 
+              {/* Description */}
               <div>
                 <label className="text-sm font-medium text-muted-foreground mb-2 block">الوصف (اختياري)</label>
                 <input
@@ -2174,6 +2232,18 @@ const Admin = () => {
           </div>
         </div>
       )}
+
+      {/* Users Tab */}
+      {activeTab === 'users' && <UserManagement />}
+
+      {/* Coupons Tab */}
+      {activeTab === 'coupons' && <CouponManagement />}
+
+      {/* Recharges Tab */}
+      {activeTab === 'recharges' && <RechargeManagement />}
+
+      {/* Payment Methods Tab */}
+      {activeTab === 'payment_methods' && <PaymentMethodsManagement />}
     </div>
   );
 };
