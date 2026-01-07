@@ -883,7 +883,18 @@ const Index = () => {
                             >
                               -
                             </button>
-                            <span className="w-12 text-center font-semibold">{quantity}</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max={optionStockCounts[selectedOption.id] || 1}
+                              value={quantity}
+                              onChange={(e) => {
+                                const val = parseInt(e.target.value) || 1;
+                                const max = optionStockCounts[selectedOption.id] || 1;
+                                setQuantity(Math.max(1, Math.min(max, val)));
+                              }}
+                              className="w-16 h-8 text-center font-semibold bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
                             <button
                               type="button"
                               onClick={() => setQuantity(q => Math.min(optionStockCounts[selectedOption.id] || 1, q + 1))}
