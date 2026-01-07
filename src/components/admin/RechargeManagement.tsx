@@ -225,8 +225,9 @@ export const RechargeManagement = () => {
                         <div className="text-2xl font-bold text-primary">
                           ${request.amount.toFixed(2)}
                         </div>
-                        <div className="text-sm text-muted-foreground font-mono" dir="ltr">
-                          التوكن: {request.tokens?.token}
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
+                          <span>التوكن:</span>
+                          <span className="font-mono" dir="ltr">{request.tokens?.token}</span>
                         </div>
                       </div>
                       {getStatusBadge(request.status)}
