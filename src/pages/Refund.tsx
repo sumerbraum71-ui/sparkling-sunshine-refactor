@@ -105,7 +105,8 @@ const Refund = () => {
       .insert({
         token_id: tokenData.id,
         order_number: actualOrderNumber,
-        reason: reason.trim() || null
+        // DB column is NOT NULL, but UI allows leaving it empty
+        reason: reason.trim() || ''
       });
 
     if (insertError) {
@@ -292,8 +293,10 @@ const Refund = () => {
                       <label className="block text-sm font-medium mb-2">رقم الطلب *</label>
                       <input
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={orderNumber}
-                        onChange={(e) => setOrderNumber(e.target.value)}
+                        onChange={(e) => setOrderNumber(e.target.value.replace(/\D/g, ''))}
                         className="input-field w-full"
                         placeholder="أدخل رقم الطلب"
                         required
@@ -414,8 +417,10 @@ const Refund = () => {
                       <label className="block text-sm font-medium mb-2">رقم الطلب *</label>
                       <input
                         type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={orderNumber}
-                        onChange={(e) => setOrderNumber(e.target.value)}
+                        onChange={(e) => setOrderNumber(e.target.value.replace(/\D/g, ''))}
                         className="input-field w-full"
                         placeholder="أدخل رقم الطلب"
                         required
