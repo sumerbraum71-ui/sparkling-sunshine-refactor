@@ -744,18 +744,48 @@ const Admin = () => {
   // Token search state
   const [tokenSearch, setTokenSearch] = useState<string>('');
 
-  // Order notification callback
-  const handleNewOrderNotification = useCallback(async () => {
-    if (activeTab === 'orders') {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-      setOrders(data || []);
-    }
-    // Also refresh stats
-    fetchTodayStats();
-  }, [activeTab]);
-
   // Use order notification hook
-  useOrderNotification(handleNewOrderNotification, notificationsEnabled);
+  const { newOrdersCount, clearNotifications } = useOrderNotification();
+
+  // Handle new order notifications
+  useEffect(() => {
+    if (newOrdersCount > 0 && notificationsEnabled) {
+      // Refresh orders if on orders tab
+      if (activeTab === 'orders') {
+        supabase.from('orders').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+          setOrders(data || []);
+        });
+      }
+      // Refresh stats
+      const fetchStats = async () => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayISO = today.toISOString();
+
+        const { data: todayOrders } = await supabase
+          .from('orders')
+          .select('*')
+          .gte('created_at', todayISO);
+
+        const { data: todayRecharges } = await supabase
+          .from('recharge_requests')
+          .select('*')
+          .gte('created_at', todayISO);
+
+        if (todayOrders) {
+          const earnings = todayOrders.reduce((sum, order) => sum + (order.total_price || 0), 0);
+          const completed = todayOrders.filter(o => o.status === 'completed').length;
+          setTodayStats({
+            totalEarnings: earnings,
+            totalOrders: todayOrders.length,
+            totalRecharges: todayRecharges?.length || 0,
+            completedOrders: completed
+          });
+        }
+      };
+      fetchStats();
+    }
+  }, [newOrdersCount, notificationsEnabled, activeTab]);
 
   // Fetch today's statistics
   const fetchTodayStats = async () => {
