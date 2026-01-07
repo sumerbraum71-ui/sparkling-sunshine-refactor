@@ -1,357 +1,383 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Check,
+  X,
+  Clock,
+  Eye,
+  CreditCard,
+  Loader2,
+  Phone,
+  User,
+  Hash,
+  RefreshCw,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { RefreshCw, Loader2, Eye, Check, X } from "lucide-react";
 
 interface RechargeRequest {
   id: string;
   token_id: string;
   amount: number;
-  payment_method_id: string | null;
+  payment_method: string | null;
+  proof_image_url: string | null;
   payment_proof: string | null;
+  sender_name: string | null;
+  sender_phone: string | null;
+  transaction_reference: string | null;
   status: string;
-  admin_notes: string | null;
+  admin_note: string | null;
   created_at: string;
-  tokens?: { token: string; balance: number };
-  payment_methods?: { name: string };
+  tokens?: {
+    token: string;
+    balance: number;
+  };
 }
 
-const RechargeManagement = () => {
+export const RechargeManagement = () => {
   const [requests, setRequests] = useState<RechargeRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<string>("pending");
   const [selectedRequest, setSelectedRequest] = useState<RechargeRequest | null>(null);
-  const [adminNotes, setAdminNotes] = useState("");
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [showActionModal, setShowActionModal] = useState(false);
+  const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
+  const [adminNote, setAdminNote] = useState("");
   const [processing, setProcessing] = useState(false);
-
-  useEffect(() => {
-    fetchRequests();
-
-    const channel = supabase
-      .channel("admin-recharge")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "recharge_requests",
-        },
-        () => {
-          fetchRequests();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
 
   const fetchRequests = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("recharge_requests")
-      .select(`
-        *,
-        tokens (token, balance),
-        payment_methods (name)
-      `)
-      .order("created_at", { ascending: false });
+    try {
+      let query = supabase
+        .from('recharge_requests')
+        .select(`
+          *,
+          tokens (token, balance)
+        `)
+        .order('created_at', { ascending: false });
 
-    if (data) setRequests(data);
-    setLoading(false);
+      if (filter !== 'all') {
+        query = query.eq('status', filter);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setRequests((data || []) as RechargeRequest[]);
+    } catch (error) {
+      console.error('Error fetching recharge requests:', error);
+      toast.error("خطأ في جلب طلبات الشحن");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleApprove = async () => {
+  useEffect(() => {
+    fetchRequests();
+  }, [filter]);
+
+  const handleAction = async () => {
     if (!selectedRequest) return;
     setProcessing(true);
 
-    // Update token balance
-    const newBalance = (selectedRequest.tokens?.balance || 0) + selectedRequest.amount;
-    
-    const { error: tokenError } = await supabase
-      .from("tokens")
-      .update({ balance: newBalance })
-      .eq("id", selectedRequest.token_id);
+    try {
+      if (actionType === 'approve') {
+        // Update token balance
+        const currentBalance = selectedRequest.tokens?.balance || 0;
+        const newBalance = currentBalance + selectedRequest.amount;
 
-    if (tokenError) {
-      toast.error("حدث خطأ أثناء تحديث الرصيد");
+        const { error: tokenError } = await supabase
+          .from('tokens')
+          .update({ balance: newBalance })
+          .eq('id', selectedRequest.token_id);
+
+        if (tokenError) throw tokenError;
+      }
+
+      // Update request status
+      const { error: requestError } = await supabase
+        .from('recharge_requests')
+        .update({
+          status: actionType === 'approve' ? 'approved' : 'rejected',
+          admin_note: adminNote || null,
+          processed_at: new Date().toISOString(),
+        })
+        .eq('id', selectedRequest.id);
+
+      if (requestError) throw requestError;
+
+      toast.success(
+        actionType === 'approve'
+          ? `تم الموافقة وإضافة ${selectedRequest.amount} للرصيد`
+          : "تم رفض الطلب"
+      );
+
+      setShowActionModal(false);
+      setSelectedRequest(null);
+      setAdminNote("");
+      fetchRequests();
+    } catch (error) {
+      console.error('Error processing request:', error);
+      toast.error("حدث خطأ أثناء معالجة الطلب");
+    } finally {
       setProcessing(false);
-      return;
     }
-
-    // Update request status
-    const { error } = await supabase
-      .from("recharge_requests")
-      .update({ 
-        status: "approved", 
-        admin_notes: adminNotes || null 
-      })
-      .eq("id", selectedRequest.id);
-
-    if (error) {
-      toast.error("حدث خطأ أثناء التحديث");
-    } else {
-      toast.success("تم قبول طلب الشحن وإضافة الرصيد");
-      setSelectedRequest(null);
-      setAdminNotes("");
-      fetchRequests();
-    }
-    setProcessing(false);
-  };
-
-  const handleReject = async () => {
-    if (!selectedRequest) return;
-    setProcessing(true);
-
-    const { error } = await supabase
-      .from("recharge_requests")
-      .update({ 
-        status: "rejected", 
-        admin_notes: adminNotes || null 
-      })
-      .eq("id", selectedRequest.id);
-
-    if (error) {
-      toast.error("حدث خطأ أثناء التحديث");
-    } else {
-      toast.success("تم رفض طلب الشحن");
-      setSelectedRequest(null);
-      setAdminNotes("");
-      fetchRequests();
-    }
-    setProcessing(false);
   };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "pending":
-        return <Badge variant="secondary">قيد المراجعة</Badge>;
-      case "approved":
-        return <Badge className="bg-primary">مقبول</Badge>;
-      case "rejected":
-        return <Badge variant="destructive">مرفوض</Badge>;
+      case 'pending':
+        return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/30"><Clock className="w-3 h-3 mr-1" /> قيد المراجعة</Badge>;
+      case 'approved':
+        return <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/30"><Check className="w-3 h-3 mr-1" /> موافق عليه</Badge>;
+      case 'rejected':
+        return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/30"><X className="w-3 h-3 mr-1" /> مرفوض</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
   };
 
-  const filteredRequests = requests.filter(
-    (req) => statusFilter === "all" || req.status === statusFilter
-  );
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString('ar-EG', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+  const getProofImage = (request: RechargeRequest) => {
+    return request.proof_image_url || request.payment_proof;
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold flex items-center gap-2">
-          <RefreshCw className="h-5 w-5" />
-          إدارة طلبات الشحن
+          <CreditCard className="w-5 h-5" />
+          طلبات الشحن
         </h2>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">الكل</SelectItem>
-            <SelectItem value="pending">قيد المراجعة</SelectItem>
-            <SelectItem value="approved">مقبول</SelectItem>
-            <SelectItem value="rejected">مرفوض</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={fetchRequests}>
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as any)}
+            className="px-3 py-2 rounded-md border bg-background text-sm"
+          >
+            <option value="pending">قيد المراجعة</option>
+            <option value="approved">موافق عليه</option>
+            <option value="rejected">مرفوض</option>
+            <option value="all">الكل</option>
+          </select>
+        </div>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>التوكن</TableHead>
-                  <TableHead>المبلغ</TableHead>
-                  <TableHead>طريقة الدفع</TableHead>
-                  <TableHead>الحالة</TableHead>
-                  <TableHead>التاريخ</TableHead>
-                  <TableHead className="text-left">إجراءات</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRequests.map((request) => (
-                  <TableRow key={request.id}>
-                    <TableCell className="font-mono text-sm" dir="ltr">
-                      {request.tokens?.token?.slice(0, 9)}...
-                    </TableCell>
-                    <TableCell className="text-primary font-bold">
-                      {request.amount} ر.س
-                    </TableCell>
-                    <TableCell>{request.payment_methods?.name || "-"}</TableCell>
-                    <TableCell>{getStatusBadge(request.status)}</TableCell>
-                    <TableCell>
-                      {new Date(request.created_at).toLocaleString("ar-SA")}
-                    </TableCell>
-                    <TableCell>
+      {loading ? (
+        <div className="flex justify-center p-8">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : requests.length === 0 ? (
+        <Card>
+          <CardContent className="py-8 text-center text-muted-foreground">
+            لا توجد طلبات شحن {filter === 'pending' ? 'قيد المراجعة' : ''}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {requests.map((request) => (
+            <Card key={request.id} className="overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  {/* Proof Image Thumbnail */}
+                  {getProofImage(request) && (
+                    <div
+                      className="w-24 h-24 rounded-lg overflow-hidden cursor-pointer border flex-shrink-0"
+                      onClick={() => {
+                        setSelectedRequest(request);
+                        setShowImageModal(true);
+                      }}
+                    >
+                      <img
+                        src={getProofImage(request)!}
+                        alt="Proof"
+                        className="w-full h-full object-cover hover:scale-110 transition-transform"
+                      />
+                    </div>
+                  )}
+
+                  {/* Details */}
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="text-2xl font-bold text-primary">
+                          ${request.amount.toFixed(2)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          التوكن: {request.tokens?.token?.slice(0, 8)}...
+                        </div>
+                      </div>
+                      {getStatusBadge(request.status)}
+                    </div>
+
+                    <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                      {request.sender_name && (
+                        <span className="flex items-center gap-1">
+                          <User className="w-4 h-4" />
+                          {request.sender_name}
+                        </span>
+                      )}
+                      {request.sender_phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone className="w-4 h-4" />
+                          {request.sender_phone}
+                        </span>
+                      )}
+                      {request.transaction_reference && (
+                        <span className="flex items-center gap-1">
+                          <Hash className="w-4 h-4" />
+                          {request.transaction_reference}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-muted-foreground">
+                      {formatDate(request.created_at)}
+                    </div>
+
+                    {request.admin_note && (
+                      <div className="text-sm bg-muted/50 p-2 rounded">
+                        <span className="font-medium">ملاحظة الأدمن:</span> {request.admin_note}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  {request.status === 'pending' && (
+                    <div className="flex md:flex-col gap-2 flex-shrink-0">
                       <Button
-                        variant="outline"
                         size="sm"
+                        variant="outline"
+                        className="text-green-500 border-green-500/30 hover:bg-green-500/10"
                         onClick={() => {
                           setSelectedRequest(request);
-                          setAdminNotes(request.admin_notes || "");
+                          setActionType('approve');
+                          setShowActionModal(true);
                         }}
                       >
-                        <Eye className="h-3 w-3 ml-1" />
-                        عرض
+                        <Check className="w-4 h-4 mr-1" />
+                        موافقة
                       </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredRequests.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
-                      لا توجد طلبات
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-500 border-red-500/30 hover:bg-red-500/10"
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setActionType('reject');
+                          setShowActionModal(true);
+                        }}
+                      >
+                        <X className="w-4 h-4 mr-1" />
+                        رفض
+                      </Button>
+                      {getProofImage(request) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedRequest(request);
+                            setShowImageModal(true);
+                          }}
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          الصورة
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-      <Dialog open={!!selectedRequest} onOpenChange={() => setSelectedRequest(null)}>
+      {/* Image Modal */}
+      <Dialog open={showImageModal} onOpenChange={setShowImageModal}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>صورة إثبات التحويل</DialogTitle>
+          </DialogHeader>
+          {selectedRequest && getProofImage(selectedRequest) && (
+            <img
+              src={getProofImage(selectedRequest)!}
+              alt="Payment Proof"
+              className="w-full rounded-lg"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Action Modal */}
+      <Dialog open={showActionModal} onOpenChange={setShowActionModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>تفاصيل طلب الشحن</DialogTitle>
+            <DialogTitle>
+              {actionType === 'approve' ? 'تأكيد الموافقة' : 'تأكيد الرفض'}
+            </DialogTitle>
           </DialogHeader>
-          {selectedRequest && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">التوكن:</span>
-                  <p className="font-mono" dir="ltr">{selectedRequest.tokens?.token}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">الرصيد الحالي:</span>
-                  <p className="font-bold">{selectedRequest.tokens?.balance} ر.س</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">المبلغ المطلوب:</span>
-                  <p className="font-bold text-primary">{selectedRequest.amount} ر.س</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">طريقة الدفع:</span>
-                  <p>{selectedRequest.payment_methods?.name || "-"}</p>
-                </div>
-              </div>
-
-              {selectedRequest.payment_proof && (
-                <div>
-                  <span className="text-muted-foreground text-sm">إثبات الدفع:</span>
-                  <a
-                    href={selectedRequest.payment_proof}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block mt-1"
-                  >
-                    <img
-                      src={selectedRequest.payment_proof}
-                      alt="إثبات الدفع"
-                      className="max-w-full h-48 object-contain rounded border"
-                    />
-                  </a>
-                </div>
-              )}
-
-              {selectedRequest.status === "pending" && (
-                <>
-                  <div className="space-y-2">
-                    <span className="text-sm text-muted-foreground">ملاحظات الإدارة:</span>
-                    <Textarea
-                      value={adminNotes}
-                      onChange={(e) => setAdminNotes(e.target.value)}
-                      placeholder="ملاحظات اختيارية..."
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleApprove}
-                      disabled={processing}
-                      className="flex-1"
-                    >
-                      {processing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <Check className="h-4 w-4 ml-2" />
-                          قبول وإضافة الرصيد
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={handleReject}
-                      disabled={processing}
-                      className="flex-1"
-                    >
-                      {processing ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <>
-                          <X className="h-4 w-4 ml-2" />
-                          رفض
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </>
-              )}
-
-              {selectedRequest.admin_notes && selectedRequest.status !== "pending" && (
-                <div className="p-3 bg-secondary/50 rounded">
-                  <span className="text-sm text-muted-foreground">ملاحظات الإدارة:</span>
-                  <p>{selectedRequest.admin_notes}</p>
-                </div>
-              )}
+          <div className="space-y-4">
+            {actionType === 'approve' ? (
+              <p>
+                سيتم إضافة <strong>${selectedRequest?.amount.toFixed(2)}</strong> لرصيد التوكن
+              </p>
+            ) : (
+              <p>سيتم رفض هذا الطلب ولن يتم إضافة أي رصيد</p>
+            )}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">ملاحظة (اختياري)</label>
+              <Textarea
+                placeholder="أضف ملاحظة للعميل..."
+                value={adminNote}
+                onChange={(e) => setAdminNote(e.target.value)}
+              />
             </div>
-          )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowActionModal(false)}>
+              إلغاء
+            </Button>
+            <Button
+              variant={actionType === 'approve' ? 'default' : 'destructive'}
+              onClick={handleAction}
+              disabled={processing}
+            >
+              {processing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : actionType === 'approve' ? (
+                'تأكيد الموافقة'
+              ) : (
+                'تأكيد الرفض'
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 };
 
-export { RechargeManagement };
 export default RechargeManagement;
