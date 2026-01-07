@@ -4,7 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 const ALLOWED_ADMIN_EMAIL = 'mr.work78907890@gmail.com';
-const ACCESS_CODE = 'BOOM2026'; // كود الأمان
+// تم إزالة الكود من هنا لزيادة الأمان 🔒
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,22 +58,36 @@ const AdminAuth = () => {
     });
     return () => subscription.unsubscribe();
   }, [navigate, isAccessGranted]);
-  const handleAccessSubmit = (e: React.FormEvent) => {
+  const handleAccessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (accessCodeInput === ACCESS_CODE) {
-      localStorage.setItem('boom_admin_access', 'granted');
-      setIsAccessGranted(true);
-      setAccessError(false);
-      toast({
-        title: 'تم التحقق بنجاح',
-        description: 'مرحباً بك في لوحة التحكم',
+    setAccessError(false);
+    try {
+      // نتحقق من الكود عن طريق السيرفر عشان محدش يشوفه
+      const { data, error } = await supabase.rpc('verify_admin_access' as any, {
+        access_code: accessCodeInput,
       });
-      setCheckingSession(true);
-    } else {
-      setAccessError(true);
+      if (error) throw error;
+      if (data === true) {
+        localStorage.setItem('boom_admin_access', 'granted');
+        setIsAccessGranted(true);
+        toast({
+          title: 'تم التحقق بنجاح',
+          description: 'مرحباً بك في لوحة التحكم',
+        });
+        setCheckingSession(true);
+      } else {
+        setAccessError(true);
+        toast({
+          title: 'خطأ',
+          description: 'كود الأمان غير صحيح',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('Access verification error:', err);
       toast({
         title: 'خطأ',
-        description: 'كود الأمان غير صحيح',
+        description: 'حدث خطأ أثناء التحقق',
         variant: 'destructive',
       });
     }
