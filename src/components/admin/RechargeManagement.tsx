@@ -353,4 +353,5 @@ const RechargeManagement = () => {
   );
 };
 
+export { RechargeManagement };
 export default RechargeManagement;

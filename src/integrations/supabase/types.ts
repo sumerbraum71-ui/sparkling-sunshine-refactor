@@ -96,11 +96,13 @@ export type Database = {
           discount_amount: number | null
           email: string | null
           id: string
+          option_id: string | null
           order_number: string | null
           password: string | null
           product_id: string
           product_option_id: string
           quantity: number
+          response_message: string | null
           status: string
           stock_content: string | null
           token_id: string
@@ -115,11 +117,13 @@ export type Database = {
           discount_amount?: number | null
           email?: string | null
           id?: string
+          option_id?: string | null
           order_number?: string | null
           password?: string | null
           product_id: string
           product_option_id: string
           quantity?: number
+          response_message?: string | null
           status?: string
           stock_content?: string | null
           token_id: string
@@ -134,11 +138,13 @@ export type Database = {
           discount_amount?: number | null
           email?: string | null
           id?: string
+          option_id?: string | null
           order_number?: string | null
           password?: string | null
           product_id?: string
           product_option_id?: string
           quantity?: number
+          response_message?: string | null
           status?: string
           stock_content?: string | null
           token_id?: string
@@ -275,6 +281,7 @@ export type Database = {
           id: string
           image: string | null
           image_url: string | null
+          instant_delivery: boolean | null
           is_active: boolean
           name: string
           price: number | null
@@ -290,6 +297,7 @@ export type Database = {
           id?: string
           image?: string | null
           image_url?: string | null
+          instant_delivery?: boolean | null
           is_active?: boolean
           name: string
           price?: number | null
@@ -305,6 +313,7 @@ export type Database = {
           id?: string
           image?: string | null
           image_url?: string | null
+          instant_delivery?: boolean | null
           is_active?: boolean
           name?: string
           price?: number | null
@@ -315,6 +324,7 @@ export type Database = {
       }
       recharge_requests: {
         Row: {
+          admin_note: string | null
           admin_notes: string | null
           amount: number
           created_at: string
@@ -327,6 +337,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          admin_note?: string | null
           admin_notes?: string | null
           amount: number
           created_at?: string
@@ -339,6 +350,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          admin_note?: string | null
           admin_notes?: string | null
           amount?: number
           created_at?: string
@@ -373,6 +385,8 @@ export type Database = {
           created_at: string
           id: string
           order_id: string | null
+          order_number: string | null
+          processed_at: string | null
           reason: string
           status: string
           token_id: string
@@ -383,6 +397,8 @@ export type Database = {
           created_at?: string
           id?: string
           order_id?: string | null
+          order_number?: string | null
+          processed_at?: string | null
           reason: string
           status?: string
           token_id: string
@@ -393,6 +409,8 @@ export type Database = {
           created_at?: string
           id?: string
           order_id?: string | null
+          order_number?: string | null
+          processed_at?: string | null
           reason?: string
           status?: string
           token_id?: string
@@ -446,6 +464,7 @@ export type Database = {
           id: string
           is_sold: boolean
           option_id: string | null
+          product_id: string | null
           product_option_id: string
           sold_at: string | null
           sold_to_order_id: string | null
@@ -456,6 +475,7 @@ export type Database = {
           id?: string
           is_sold?: boolean
           option_id?: string | null
+          product_id?: string | null
           product_option_id: string
           sold_at?: string | null
           sold_to_order_id?: string | null
@@ -466,6 +486,7 @@ export type Database = {
           id?: string
           is_sold?: boolean
           option_id?: string | null
+          product_id?: string | null
           product_option_id?: string
           sold_at?: string | null
           sold_to_order_id?: string | null
