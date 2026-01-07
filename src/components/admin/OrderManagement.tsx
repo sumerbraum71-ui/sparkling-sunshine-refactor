@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ShoppingCart, Loader2, MessageCircle, Eye } from "lucide-react";
+import { ShoppingCart, Loader2, MessageCircle, Eye, X } from "lucide-react";
 import OrderChat from "@/components/OrderChat";
 
 interface Order {
@@ -230,11 +230,19 @@ const OrderManagement = () => {
       </Card>
 
       {selectedOrder && (
-        <OrderChat
-          order={selectedOrder}
-          onClose={() => setSelectedOrder(null)}
-          isAdmin={true}
-        />
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden">
+            <div className="p-4 border-b border-border flex justify-between items-center">
+              <h3 className="font-bold">محادثة الطلب</h3>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedOrder(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <OrderChat orderId={selectedOrder.id} senderType="admin" />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
