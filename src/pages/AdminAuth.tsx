@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-const ALLOWED_ADMIN_EMAIL = 'mr.work78907890@gmail.com';
-// تم إزالة الكود من هنا لزيادة الأمان 🔒
+const ALLOWED_ADMIN_EMAIL = 'boom@admin';
+// تم نقل كود الأمان للسيرفر (RPC) لزيادة الحماية
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +21,7 @@ const AdminAuth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   useEffect(() => {
+    // If no access granted yet, don't check session (stay on gate)
     if (!isAccessGranted) {
       setCheckingSession(false);
       return;
@@ -38,7 +39,7 @@ const AdminAuth = () => {
           .eq('user_id', session.user.id)
           .maybeSingle();
         if (adminData) {
-          navigate('/BOOM');
+          navigate('/bayomy');
         }
       }
       setCheckingSession(false);
@@ -52,7 +53,7 @@ const AdminAuth = () => {
           .eq('user_id', session.user.id)
           .maybeSingle();
         if (adminData) {
-          navigate('/BOOM');
+          navigate('/bayomy');
         }
       }
     });
@@ -62,7 +63,7 @@ const AdminAuth = () => {
     e.preventDefault();
     setAccessError(false);
     try {
-      // نتحقق من الكود عن طريق السيرفر عشان محدش يشوفه
+      // Call the secure server function
       const { data, error } = await supabase.rpc('verify_admin_access' as any, {
         access_code: accessCodeInput,
       });
@@ -201,6 +202,7 @@ const AdminAuth = () => {
       </div>
     );
   }
+  // Security Gate UI
   if (!isAccessGranted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -239,6 +241,7 @@ const AdminAuth = () => {
       </div>
     );
   }
+  // Normal Login UI
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="card-simple p-8 w-full max-w-md animate-in slide-in-from-bottom-4 duration-500">
