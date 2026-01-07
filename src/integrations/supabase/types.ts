@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_auth: {
+        Row: {
+          can_manage_coupons: boolean | null
+          can_manage_orders: boolean | null
+          can_manage_payment_methods: boolean | null
+          can_manage_products: boolean | null
+          can_manage_recharges: boolean | null
+          can_manage_refunds: boolean | null
+          can_manage_stock: boolean | null
+          can_manage_tokens: boolean | null
+          can_manage_users: boolean | null
+          created_at: string | null
+          id: string
+          is_super_admin: boolean | null
+          user_id: string
+        }
+        Insert: {
+          can_manage_coupons?: boolean | null
+          can_manage_orders?: boolean | null
+          can_manage_payment_methods?: boolean | null
+          can_manage_products?: boolean | null
+          can_manage_recharges?: boolean | null
+          can_manage_refunds?: boolean | null
+          can_manage_stock?: boolean | null
+          can_manage_tokens?: boolean | null
+          can_manage_users?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_super_admin?: boolean | null
+          user_id: string
+        }
+        Update: {
+          can_manage_coupons?: boolean | null
+          can_manage_orders?: boolean | null
+          can_manage_payment_methods?: boolean | null
+          can_manage_products?: boolean | null
+          can_manage_recharges?: boolean | null
+          can_manage_refunds?: boolean | null
+          can_manage_stock?: boolean | null
+          can_manage_tokens?: boolean | null
+          can_manage_users?: boolean | null
+          created_at?: string | null
+          id?: string
+          is_super_admin?: boolean | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       admin_users: {
         Row: {
           can_manage_coupons: boolean
@@ -692,6 +740,8 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
