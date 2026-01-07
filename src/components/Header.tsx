@@ -1,138 +1,192 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from 'react';
+import { RotateCcw, HelpCircle, Coins, Menu, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Menu, LogOut, HelpCircle, RefreshCw, CreditCard } from "lucide-react";
-import RechargeRequest from "@/components/RechargeRequest";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { RechargeRequest, getSavedToken, saveToken } from '@/components/RechargeRequest';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
-interface Token {
-  id: string;
-  token: string;
-  balance: number;
-}
+const Header = () => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showRechargeDialog, setShowRechargeDialog] = useState(false);
+  const [rechargeToken, setRechargeToken] = useState('');
+  const [tokenData, setTokenData] = useState<{ id: string } | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [savedToken, setSavedToken] = useState<string | null>(null);
 
-interface HeaderProps {
-  currentToken: Token | null;
-  onLogout: () => void;
-  onBalanceUpdate: (newBalance: number) => void;
-}
+  // تحميل التوكن المحفوظ عند فتح الـ dialog
+  useEffect(() => {
+    if (showRechargeDialog) {
+      const token = getSavedToken();
+      setSavedToken(token);
+      if (token) {
+        setRechargeToken(token);
+      }
+    }
+  }, [showRechargeDialog]);
 
-const Header = ({ currentToken, onLogout, onBalanceUpdate }: HeaderProps) => {
-  const [rechargeOpen, setRechargeOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const handleVerifyToken = async () => {
+    if (!rechargeToken.trim()) {
+      toast.error('ادخل التوكن');
+      return;
+    }
+    setIsVerifying(true);
+    try {
+      const { data, error } = await supabase
+        .from('tokens')
+        .select('id')
+        .eq('token', rechargeToken.trim())
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        toast.error('التوكن غير موجود');
+        return;
+      }
+      setTokenData(data);
+      // حفظ التوكن في localStorage
+      saveToken(rechargeToken.trim());
+    } catch (error) {
+      toast.error('حدث خطأ');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleCloseDialog = () => {
+    setShowRechargeDialog(false);
+    setRechargeToken('');
+    setTokenData(null);
+  };
 
   return (
-    <header className="bg-card border-b border-border sticky top-0 z-50">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex justify-between items-center">
-          <Link to="/" className="text-2xl font-bold text-primary">
-            BOOMPAY
-          </Link>
+    <>
+      <header className="bg-card border-b border-border">
+        <div className="container mx-auto px-4 py-3 md:py-4">
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <Link to="/" className="flex-shrink-0">
+              <h1 className="text-xl md:text-3xl font-bold">
+                <span className="text-primary">BOOM</span>
+                <span className="text-foreground">PAY</span>
+              </h1>
+              <p className="text-xs md:text-sm text-muted-foreground hidden sm:block">
+                منصتك الموثوقة للخدمات الرقمية
+              </p>
+            </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-4">
-            <Link to="/faq">
-              <Button variant="ghost" size="sm">
-                <HelpCircle className="h-4 w-4 ml-2" />
-                الأسئلة الشائعة
-              </Button>
-            </Link>
-            <Link to="/refund">
-              <Button variant="ghost" size="sm">
-                <RefreshCw className="h-4 w-4 ml-2" />
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="md:hidden p-2 rounded-lg hover:bg-muted transition-colors"
+            >
+              {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
+
+            {/* Desktop Navigation */}
+            <div className="hidden md:flex items-center gap-2 flex-wrap justify-end">
+              <Link to="/refund" className="nav-btn bg-secondary text-secondary-foreground hover:bg-muted flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" />
                 طلب استرداد
-              </Button>
-            </Link>
-            {currentToken && (
-              <>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setRechargeOpen(true)}
-                >
-                  <CreditCard className="h-4 w-4 ml-2" />
-                  شحن الرصيد
-                </Button>
-                <Button variant="outline" size="sm" onClick={onLogout}>
-                  <LogOut className="h-4 w-4 ml-2" />
-                  خروج
-                </Button>
-              </>
-            )}
-          </nav>
+              </Link>
+              <Link to="/faq" className="nav-btn bg-secondary text-secondary-foreground hover:bg-muted flex items-center gap-2">
+                <HelpCircle className="w-4 h-4" />
+                الأسئلة
+              </Link>
+              <button
+                onClick={() => setShowRechargeDialog(true)}
+                className="nav-btn bg-primary text-primary-foreground hover:opacity-90 flex items-center gap-2"
+              >
+                <Coins className="w-4 h-4" />
+                شراء توكن
+              </button>
+            </div>
+          </div>
 
           {/* Mobile Navigation */}
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild className="md:hidden">
-              <Button variant="ghost" size="icon">
-                <Menu className="h-6 w-6" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="w-72">
-              <SheetHeader>
-                <SheetTitle className="text-primary">القائمة</SheetTitle>
-              </SheetHeader>
-              <nav className="flex flex-col gap-4 mt-6">
-                <Link to="/faq" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">
-                    <HelpCircle className="h-4 w-4 ml-2" />
-                    الأسئلة الشائعة
-                  </Button>
-                </Link>
-                <Link to="/refund" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="ghost" className="w-full justify-start">
-                    <RefreshCw className="h-4 w-4 ml-2" />
-                    طلب استرداد
-                  </Button>
-                </Link>
-                {currentToken && (
-                  <>
-                    <Button
-                      variant="default"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        setRechargeOpen(true);
-                      }}
-                    >
-                      <CreditCard className="h-4 w-4 ml-2" />
-                      شحن الرصيد
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        onLogout();
-                      }}
-                    >
-                      <LogOut className="h-4 w-4 ml-2" />
-                      تسجيل الخروج
-                    </Button>
-                  </>
-                )}
-              </nav>
-            </SheetContent>
-          </Sheet>
+          {isMenuOpen && (
+            <div className="md:hidden mt-3 pt-3 border-t border-border space-y-2">
+              <Link
+                to="/refund"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full nav-btn bg-secondary text-secondary-foreground hover:bg-muted flex items-center gap-2 justify-center py-3"
+              >
+                <RotateCcw className="w-4 h-4" />
+                طلب استرداد
+              </Link>
+              <Link
+                to="/faq"
+                onClick={() => setIsMenuOpen(false)}
+                className="w-full nav-btn bg-secondary text-secondary-foreground hover:bg-muted flex items-center gap-2 justify-center py-3"
+              >
+                <HelpCircle className="w-4 h-4" />
+                الأسئلة
+              </Link>
+              <button
+                onClick={() => { setIsMenuOpen(false); setShowRechargeDialog(true); }}
+                className="w-full nav-btn bg-primary text-primary-foreground hover:opacity-90 flex items-center gap-2 justify-center py-3"
+              >
+                <Coins className="w-4 h-4" />
+                شراء توكن
+              </button>
+            </div>
+          )}
         </div>
-      </div>
+      </header>
 
       {/* Recharge Dialog */}
-      {currentToken && (
-        <RechargeRequest
-          open={rechargeOpen}
-          onOpenChange={setRechargeOpen}
-          tokenId={currentToken.id}
-          onSuccess={(amount) => onBalanceUpdate(currentToken.balance)}
-        />
-      )}
-    </header>
+      <Dialog open={showRechargeDialog} onOpenChange={handleCloseDialog}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-center text-lg">شحن الرصيد</DialogTitle>
+          </DialogHeader>
+
+          {!tokenData ? (
+            <div className="space-y-4">
+              {/* إدخال التوكن */}
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={rechargeToken}
+                  onChange={(e) => setRechargeToken(e.target.value)}
+                  placeholder={savedToken ? savedToken : "التوكن (اتركه فارغ لو جديد)"}
+                  className="flex-1"
+                />
+                {rechargeToken.trim() && (
+                  <Button
+                    onClick={handleVerifyToken}
+                    disabled={isVerifying}
+                    size="sm"
+                  >
+                    {isVerifying ? '...' : 'شحن'}
+                  </Button>
+                )}
+              </div>
+
+              {!rechargeToken.trim() && (
+                <RechargeRequest
+                  onTokenGenerated={(token) => {
+                    console.log('New token:', token);
+                  }}
+                />
+              )}
+            </div>
+          ) : (
+            <RechargeRequest
+              tokenId={tokenData.id}
+              onSuccess={handleCloseDialog}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
