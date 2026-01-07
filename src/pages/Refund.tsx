@@ -53,12 +53,16 @@ const Refund = () => {
       return;
     }
 
-    // Verify order exists and belongs to this token
+    // Verify order exists and belongs to this token (support both formats: with/without ORD- prefix)
+    const orderNum = orderNumber.trim();
+    const orderNumWithPrefix = orderNum.startsWith('ORD-') ? orderNum : `ORD-${orderNum}`;
+    const orderNumWithoutPrefix = orderNum.startsWith('ORD-') ? orderNum.replace('ORD-', '') : orderNum;
+
     const { data: orderData } = await supabase
       .from('orders')
-      .select('id, status, amount')
-      .eq('order_number', orderNumber.trim())
+      .select('id, status, amount, order_number')
       .eq('token_id', tokenData.id)
+      .or(`order_number.eq.${orderNum},order_number.eq.${orderNumWithPrefix},order_number.eq.${orderNumWithoutPrefix}`)
       .maybeSingle();
 
     if (!orderData) {
@@ -66,6 +70,9 @@ const Refund = () => {
       setIsLoading(false);
       return;
     }
+    
+    // Use the actual order number from DB for consistency
+    const actualOrderNumber = orderData.order_number;
 
     if (orderData.status === 'pending' || orderData.status === 'in_progress') {
       setError('لا يمكن طلب استرداد لطلب قيد التنفيذ');
@@ -77,7 +84,7 @@ const Refund = () => {
     const { data: existingRefund } = await supabase
       .from('refund_requests')
       .select('id, status')
-      .eq('order_number', orderNumber.trim())
+      .eq('order_number', actualOrderNumber)
       .maybeSingle();
 
     if (existingRefund) {
@@ -97,7 +104,7 @@ const Refund = () => {
       .from('refund_requests')
       .insert({
         token_id: tokenData.id,
-        order_number: orderNumber.trim(),
+        order_number: actualOrderNumber,
         reason: reason.trim() || null
       });
 
@@ -137,12 +144,16 @@ const Refund = () => {
       return;
     }
 
-    // Get order
+    // Get order (support both formats: with/without ORD- prefix)
+    const orderNum = orderNumber.trim();
+    const orderNumWithPrefix = orderNum.startsWith('ORD-') ? orderNum : `ORD-${orderNum}`;
+    const orderNumWithoutPrefix = orderNum.startsWith('ORD-') ? orderNum.replace('ORD-', '') : orderNum;
+
     const { data: orderData } = await supabase
       .from('orders')
-      .select('id')
-      .eq('order_number', orderNumber.trim())
+      .select('id, order_number')
       .eq('token_id', tokenData.id)
+      .or(`order_number.eq.${orderNum},order_number.eq.${orderNumWithPrefix},order_number.eq.${orderNumWithoutPrefix}`)
       .maybeSingle();
 
     if (!orderData) {
@@ -151,11 +162,13 @@ const Refund = () => {
       return;
     }
 
+    const actualOrderNumber = orderData.order_number;
+
     // Get refund request
     const { data: refundData, error: refundError } = await supabase
       .from('refund_requests')
       .select('status, reason, admin_notes, created_at, processed_at')
-      .eq('order_number', orderNumber.trim())
+      .eq('order_number', actualOrderNumber)
       .maybeSingle();
 
     if (refundError) {
