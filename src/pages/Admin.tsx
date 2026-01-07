@@ -1,177 +1,2179 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
-import { 
-  Package, 
-  Key, 
-  ShoppingCart, 
-  RefreshCw, 
-  Tag, 
-  CreditCard, 
-  Users, 
-  Settings, 
-  LogOut,
-  Bell
-} from "lucide-react";
-import ProductManagement from "@/components/admin/ProductManagement";
-import TokenManagement from "@/components/admin/TokenManagement";
-import OrderManagement from "@/components/admin/OrderManagement";
-import RechargeManagement from "@/components/admin/RechargeManagement";
-import RefundManagement from "@/components/admin/RefundManagement";
-import CouponManagement from "@/components/admin/CouponManagement";
-import PaymentMethodsManagement from "@/components/admin/PaymentMethodsManagement";
-import UserManagement from "@/components/admin/UserManagement";
-import useOrderNotification from "@/hooks/useOrderNotification";
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  Package, Key, ShoppingBag, LogOut, Plus, Trash2, Edit2, Save, X,
+  ChevronDown, ChevronUp, Settings, Copy, Eye, EyeOff, Clock, CheckCircle2,
+  XCircle, Loader2, LayoutGrid, Zap, Database, Bell, BellOff, TrendingUp, DollarSign, Users, MessageCircle, Link, RotateCcw, Ban, Ticket, Shield, CreditCard, Wallet
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import OrderChat from '@/components/OrderChat';
+import UserManagement from '@/components/admin/UserManagement';
+import CouponManagement from '@/components/admin/CouponManagement';
+import RechargeManagement from '@/components/admin/RechargeManagement';
+import PaymentMethodsManagement from '@/components/admin/PaymentMethodsManagement';
+
+interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  price: number;
+  duration: string | null;
+  available: number | null;
+  instant_delivery?: boolean;
+}
+
+interface StockItem {
+  id: string;
+  product_option_id: string | null;
+  option_id: string | null;
+  content: string;
+  is_sold: boolean;
+}
+
+interface ProductOption {
+  id: string;
+  product_id: string;
+  name: string;
+  price: number;
+  duration: string | null;
+  available: number | null;
+  type: string | null;
+  description: string | null;
+  estimated_time: string | null;
+  is_active: boolean;
+}
+
+interface Token {
+  id: string;
+  token: string;
+  balance: number;
+  is_blocked: boolean;
+}
+
+interface Order {
+  id: string;
+  order_number: string;
+  token_id: string | null;
+  product_id: string | null;
+  product_option_id: string | null;
+  total_price: number;
+  status: string;
+  created_at: string;
+  email: string | null;
+  password: string | null;
+  verification_link: string | null;
+}
+
+interface RefundRequest {
+  id: string;
+  token_id: string | null;
+  order_id: string | null;
+  reason: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  admin_notes: string | null;
+}
+
+// Status options
+const statusOptions = [
+  { value: 'pending', label: 'قيد الانتظار', icon: Clock, color: 'text-warning' },
+  { value: 'in_progress', label: 'قيد التنفيذ', icon: Loader2, color: 'text-info' },
+  { value: 'completed', label: 'مكتمل', icon: CheckCircle2, color: 'text-success' },
+  { value: 'rejected', label: 'مرفوض', icon: XCircle, color: 'text-destructive' },
+  { value: 'cancelled', label: 'ملغي', icon: Ban, color: 'text-muted-foreground' },
+];
+
+// Order Card Component
+const OrderCard = ({
+  order,
+  onUpdateStatus,
+  onDelete,
+  onRequestNewLink,
+  products,
+  productOptions
+}: {
+  order: Order;
+  onUpdateStatus: (id: string, status: string) => void;
+  onDelete: (id: string) => void;
+  onRequestNewLink: (orderId: string) => void;
+  products: Product[];
+  productOptions: ProductOption[];
+}) => {
+  const [selectedStatus, setSelectedStatus] = useState(order.status);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const { toast } = useToast();
+
+  const handleSubmit = () => {
+    onUpdateStatus(order.id, selectedStatus);
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: 'تم النسخ', description: `تم نسخ ${label}` });
+  };
+
+  const getStatusInfo = (status: string) => {
+    return statusOptions.find(s => s.value === status) || statusOptions[0];
+  };
+
+  const getProductName = () => {
+    const product = products.find(p => p.id === order.product_id);
+    const option = productOptions.find(o => o.id === order.product_option_id);
+    if (product && option) return `${product.name} - ${option.name}`;
+    return product?.name || option?.name || 'غير معروف';
+  };
+
+  const statusInfo = getStatusInfo(order.status);
+  const StatusIcon = statusInfo.icon;
+
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden hover:shadow-md transition-shadow">
+      {/* Status Header */}
+      <div className={`px-4 py-2 flex items-center justify-between ${
+        order.status === 'pending' ? 'bg-warning/10' :
+        order.status === 'in_progress' ? 'bg-info/10' :
+        order.status === 'completed' ? 'bg-success/10' :
+        order.status === 'cancelled' ? 'bg-muted/50' :
+        'bg-destructive/10'
+      }`}>
+        <div className="flex items-center gap-2">
+          <StatusIcon className={`w-4 h-4 ${statusInfo.color} ${order.status === 'in_progress' ? 'animate-spin' : ''}`} />
+          <span className={`text-sm font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {new Date(order.created_at).toLocaleDateString('ar-EG')} - {new Date(order.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {/* Order Number & Product Name */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Package className="w-4 h-4 text-primary" />
+            <span>{getProductName()}</span>
+          </div>
+          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-lg font-mono">
+            طلب #{order.order_number}
+          </span>
+        </div>
+
+        {/* Amount & Verification Link */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xl font-bold text-primary">{order.total_price} ر.س</span>
+
+          {order.verification_link && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">الرابط:</span>
+              <span className="text-sm text-primary bg-primary/10 px-2 py-1 rounded">{order.verification_link}</span>
+              <button
+                onClick={() => copyToClipboard(order.verification_link!, 'الرابط')}
+                className="p-1 hover:bg-muted rounded"
+                title="نسخ الرابط"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+              {order.status === 'in_progress' && (
+                <button
+                  onClick={() => onRequestNewLink(order.id)}
+                  className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 bg-primary/10 px-2 py-1 rounded"
+                  title="طلب رابط جديد من العميل"
+                >
+                  <Link className="w-3 h-3" />
+                  طلب رابط جديد
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Email & Password */}
+        <div className="flex flex-wrap items-center gap-3">
+          {order.email && (
+            <div className="flex items-center gap-1 bg-muted px-3 py-1.5 rounded-lg">
+              <span className="text-sm">{order.email}</span>
+              <button onClick={() => copyToClipboard(order.email!, 'الإيميل')} className="p-1 hover:bg-background rounded">
+                <Copy className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
+          {order.password && (
+            <div className="flex items-center gap-1 bg-muted px-3 py-1.5 rounded-lg">
+              <span className="text-sm font-mono">{showPassword ? order.password : '••••••••'}</span>
+              <button onClick={() => setShowPassword(!showPassword)} className="p-1 hover:bg-background rounded">
+                {showPassword ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+              </button>
+              <button onClick={() => copyToClipboard(order.password!, 'الباسورد')} className="p-1 hover:bg-background rounded">
+                <Copy className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="input-field text-sm py-2.5 min-w-[180px]"
+          >
+            {statusOptions.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+
+          <div className="flex gap-2 flex-1">
+            <button onClick={handleSubmit} className="btn-primary px-4 py-2.5 flex items-center gap-2">
+              <Save className="w-4 h-4" />
+              <span>حفظ</span>
+            </button>
+            {order.status === 'in_progress' && (
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className={`p-2.5 border rounded-lg transition-colors ${
+                  showChat
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:bg-muted'
+                }`}
+              >
+                <MessageCircle className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={() => onDelete(order.id)} className="p-2.5 border border-destructive/30 text-destructive hover:bg-destructive/10 rounded-lg transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Chat Section */}
+        {showChat && order.status === 'in_progress' && (
+          <div className="pt-4 border-t border-border">
+            <OrderChat orderId={order.id} senderType="admin" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Refund Card Component
+const RefundCard = ({
+  refund,
+  orderInfo,
+  tokenValue,
+  onApprove,
+  onReject
+}: {
+  refund: RefundRequest;
+  orderInfo: Order | undefined;
+  tokenValue: string;
+  onApprove: (refund: RefundRequest, adminNote: string, refundAmount: number) => void;
+  onReject: (refundId: string, adminNote: string) => void;
+}) => {
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [showApproveForm, setShowApproveForm] = useState(false);
+  const [rejectNote, setRejectNote] = useState('');
+  const [approveNote, setApproveNote] = useState('');
+  const [refundAmount, setRefundAmount] = useState(orderInfo?.total_price?.toString() || '0');
+
+  const handleReject = () => {
+    onReject(refund.id, rejectNote);
+    setShowRejectForm(false);
+    setRejectNote('');
+  };
+
+  const handleApprove = () => {
+    const amount = parseFloat(refundAmount) || 0;
+    if (amount <= 0) return;
+    onApprove(refund, approveNote, amount);
+    setShowApproveForm(false);
+    setApproveNote('');
+  };
+
+  return (
+    <div className={`bg-card rounded-xl border overflow-hidden ${
+      refund.status === 'pending' ? 'border-warning' :
+      refund.status === 'approved' ? 'border-success' : 'border-destructive'
+    }`}>
+      {/* Status Header */}
+      <div className={`px-4 py-2 flex items-center justify-between ${
+        refund.status === 'pending' ? 'bg-warning/10' :
+        refund.status === 'approved' ? 'bg-success/10' : 'bg-destructive/10'
+      }`}>
+        <div className="flex items-center gap-2">
+          {refund.status === 'pending' ? (
+            <Clock className="w-4 h-4 text-warning" />
+          ) : refund.status === 'approved' ? (
+            <CheckCircle2 className="w-4 h-4 text-success" />
+          ) : (
+            <XCircle className="w-4 h-4 text-destructive" />
+          )}
+          <span className={`text-sm font-semibold ${
+            refund.status === 'pending' ? 'text-warning' :
+            refund.status === 'approved' ? 'text-success' : 'text-destructive'
+          }`}>
+            {refund.status === 'pending' ? 'قيد المراجعة' :
+             refund.status === 'approved' ? 'تم الاسترداد' : 'مرفوض'}
+          </span>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {new Date(refund.created_at).toLocaleDateString('ar-EG')} - {new Date(refund.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+
+      <div className="p-4 space-y-3">
+        {/* Token & Order Info */}
+        <div className="flex flex-wrap gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <Key className="w-4 h-4 text-muted-foreground" />
+            <span className="text-muted-foreground">التوكن:</span>
+            <span className="font-mono bg-muted px-2 py-0.5 rounded">{tokenValue || '---'}</span>
+          </div>
+          {orderInfo && (
+            <>
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">رقم الطلب:</span>
+                <span className="font-mono bg-primary/10 text-primary px-2 py-0.5 rounded font-bold">
+                  #{orderInfo.order_number}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-primary" />
+                <span className="text-muted-foreground">المبلغ:</span>
+                <span className="font-bold text-primary">{orderInfo.total_price} ر.س</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Reason */}
+        {refund.reason && (
+          <div className="p-3 bg-muted/50 rounded-lg">
+            <p className="text-xs text-muted-foreground mb-1">سبب الاسترداد:</p>
+            <p className="text-sm">{refund.reason}</p>
+          </div>
+        )}
+
+        {/* Admin Note */}
+        {refund.admin_notes && (
+          <div className={`p-3 rounded-lg border ${
+            refund.status === 'rejected'
+              ? 'bg-destructive/10 border-destructive/20'
+              : 'bg-primary/10 border-primary/20'
+          }`}>
+            <p className={`text-xs mb-1 ${
+              refund.status === 'rejected' ? 'text-destructive' : 'text-primary'
+            }`}>
+              {refund.status === 'rejected' ? 'سبب الرفض:' : 'ملاحظة:'}
+            </p>
+            <p className={`text-sm ${
+              refund.status === 'rejected' ? 'text-destructive' : 'text-foreground'
+            }`}>{refund.admin_notes}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        {refund.status === 'pending' && !showRejectForm && !showApproveForm && (
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => setShowApproveForm(true)}
+              className="flex-1 py-2 bg-success text-success-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              قبول الاسترداد
+            </button>
+            <button
+              onClick={() => setShowRejectForm(true)}
+              className="flex-1 py-2 bg-destructive text-destructive-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            >
+              <XCircle className="w-4 h-4" />
+              رفض
+            </button>
+          </div>
+        )}
+
+        {/* Approve Form */}
+        {refund.status === 'pending' && showApproveForm && (
+          <div className="pt-2 space-y-3 border-t border-border">
+            <div>
+              <label className="text-sm font-medium mb-2 block">مبلغ الاسترداد</label>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">ر.س</span>
+                  <input
+                    type="number"
+                    value={refundAmount}
+                    onChange={(e) => setRefundAmount(e.target.value)}
+                    className="input-field w-full pr-12"
+                    min="0"
+                    max={orderInfo?.total_price || 0}
+                    step="0.01"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRefundAmount(orderInfo?.total_price?.toString() || '0')}
+                  className="px-3 py-2 text-xs bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                >
+                  المبلغ كامل
+                </button>
+              </div>
+              {orderInfo && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  المبلغ الأصلي للطلب: {orderInfo.total_price} ر.س
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">ملاحظة للعميل (اختياري)</label>
+              <textarea
+                value={approveNote}
+                onChange={(e) => setApproveNote(e.target.value)}
+                className="input-field w-full h-20"
+                placeholder="اكتب ملاحظة تظهر للعميل..."
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleApprove}
+                disabled={!refundAmount || parseFloat(refundAmount) <= 0}
+                className="flex-1 py-2 bg-success text-success-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                استرداد {refundAmount || '0'} ر.س
+              </button>
+              <button
+                onClick={() => { setShowApproveForm(false); setApproveNote(''); }}
+                className="px-4 py-2 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Reject Form */}
+        {refund.status === 'pending' && showRejectForm && (
+          <div className="pt-2 space-y-3 border-t border-border">
+            <div>
+              <label className="text-sm font-medium mb-2 block">سبب الرفض (اختياري)</label>
+              <textarea
+                value={rejectNote}
+                onChange={(e) => setRejectNote(e.target.value)}
+                className="input-field w-full h-20"
+                placeholder="اكتب سبب رفض طلب الاسترداد..."
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReject}
+                className="flex-1 py-2 bg-destructive text-destructive-foreground rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+              >
+                <XCircle className="w-4 h-4" />
+                تأكيد الرفض
+              </button>
+              <button
+                onClick={() => { setShowRejectForm(false); setRejectNote(''); }}
+                className="px-4 py-2 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 transition-colors"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Product Card Component
+const ProductCard = ({
+  product,
+  options,
+  stockCount,
+  isExpanded,
+  onToggleExpand,
+  onEdit,
+  onDelete,
+  onAddOption,
+  onEditOption,
+  onDeleteOption,
+  onManageStock,
+  onManageOptionStock,
+  getOptionStockCount,
+}: {
+  product: Product;
+  options: ProductOption[];
+  stockCount: number;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddOption: () => void;
+  onEditOption: (option: ProductOption) => void;
+  onDeleteOption: (id: string) => void;
+  onManageStock: () => void;
+  onManageOptionStock: (optionId: string) => void;
+  getOptionStockCount: (optionId: string) => number;
+}) => {
+  return (
+    <div className="bg-card rounded-xl border border-border overflow-hidden hover:shadow-md transition-shadow">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-lg truncate">{product.name}</h3>
+              {product.instant_delivery && (
+                <span className="bg-success/20 text-success px-2 py-0.5 rounded-md text-xs font-medium flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> استلام فوري
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-muted-foreground">
+              {product.price > 0 && (
+                <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md font-medium">{product.price} ر.س</span>
+              )}
+              {product.duration && (
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> {product.duration}
+                </span>
+              )}
+              {product.instant_delivery ? (
+                <span className="flex items-center gap-1 text-success">
+                  <Database className="w-3 h-3" /> المخزون: {stockCount}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  <Package className="w-3 h-3" /> متوفر: {product.available || 0}
+                </span>
+              )}
+              <span className="flex items-center gap-1 text-primary">
+                <Settings className="w-3 h-3" /> {options.length} خيارات
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            {product.instant_delivery && (
+              <button
+                onClick={onManageStock}
+                className="p-2 hover:bg-success/10 text-success rounded-lg transition-colors"
+                title="إدارة المخزون"
+              >
+                <Database className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={onToggleExpand}
+              className="p-2 hover:bg-muted rounded-lg transition-colors"
+              title="خيارات المنتج"
+            >
+              {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+            </button>
+            <button onClick={onEdit} className="p-2 hover:bg-muted rounded-lg transition-colors">
+              <Edit2 className="w-4 h-4" />
+            </button>
+            <button onClick={onDelete} className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Options Section */}
+      {isExpanded && (
+        <div className="border-t border-border bg-muted/30">
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <LayoutGrid className="w-4 h-4" />
+                المنتجات ({options.length})
+              </h4>
+              <button
+                onClick={onAddOption}
+                className="text-sm text-primary hover:text-primary/80 flex items-center gap-1 font-medium"
+              >
+                <Plus className="w-4 h-4" /> إضافة منتج
+              </button>
+            </div>
+
+            {options.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Settings className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">لا توجد منتجات - اضغط على "إضافة منتج" لإنشاء منتج جديد</p>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {options.map((option) => (
+                  <div key={option.id} className="bg-card p-3 rounded-lg border border-border flex items-center justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{option.name}</p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
+                        <span className="bg-secondary px-2 py-0.5 rounded">
+                          {option.type === 'none' ? 'استلام فوري' : option.type === 'email_password' ? 'إيميل وباسورد' : option.type === 'link' ? 'رابط فقط' : option.type === 'text' ? 'نص' : 'استلام فوري'}
+                        </span>
+                        {option.price > 0 && (
+                          <span className="text-primary font-medium">{option.price} ر.س</span>
+                        )}
+                        {option.estimated_time && (
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {option.estimated_time}
+                          </span>
+                        )}
+                        {product.instant_delivery && (
+                          <span className="flex items-center gap-1 text-success">
+                            <Database className="w-3 h-3" /> مخزون: {getOptionStockCount(option.id)}
+                          </span>
+                        )}
+                      </div>
+                      {option.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{option.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {product.instant_delivery && (
+                        <button
+                          onClick={() => onManageOptionStock(option.id)}
+                          className="p-1.5 hover:bg-success/10 text-success rounded transition-colors"
+                          title="إدارة مخزون هذا المنتج"
+                        >
+                          <Database className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => onEditOption(option)} className="p-1.5 hover:bg-muted rounded transition-colors">
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => onDeleteOption(option.id)} className="p-1.5 hover:bg-destructive/10 text-destructive rounded transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface UserPermissions {
+  can_manage_orders: boolean;
+  can_manage_products: boolean;
+  can_manage_tokens: boolean;
+  can_manage_refunds: boolean;
+  can_manage_stock: boolean;
+  can_manage_coupons: boolean;
+}
 
 const Admin = () => {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods'>('orders');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  const [tokens, setTokens] = useState<Token[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [refundRequests, setRefundRequests] = useState<RefundRequest[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const { newOrdersCount, clearNotifications } = useOrderNotification();
+  const [userPermissions, setUserPermissions] = useState<UserPermissions | null>(null);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // Modals
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [showOptionModal, setShowOptionModal] = useState(false);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+
+  // Editing states
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [editingOption, setEditingOption] = useState<ProductOption | null>(null);
+  const [editingToken, setEditingToken] = useState<Token | null>(null);
+  const [currentProductId, setCurrentProductId] = useState<string | null>(null);
+
+  // Form states
+  const [productForm, setProductForm] = useState({ name: '', price: 0, duration: '', available: 0, instant_delivery: false });
+  const [optionForm, setOptionForm] = useState({ name: '', type: 'email_password', description: '', estimated_time: '', price: 0, duration: '', delivery_type: 'manual', is_active: true });
+  const [tokenForm, setTokenForm] = useState({ token: '', balance: 0 });
+
+  // New options to add with product
+  const [newProductOptions, setNewProductOptions] = useState<Array<{ name: string; price: number; description: string; estimated_time: string; input_type: string; duration: string; delivery_type: string; stock_content: string }>>([]);
+
+  // Stock items for instant delivery
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [newStockItems, setNewStockItems] = useState<string>('');
+  const [showStockModal, setShowStockModal] = useState(false);
+  const [currentStockProductId, setCurrentStockProductId] = useState<string | null>(null);
+  const [currentStockOptionId, setCurrentStockOptionId] = useState<string | null>(null);
+
+  // Statistics state
+  const [todayStats, setTodayStats] = useState({
+    totalEarnings: 0,
+    totalOrders: 0,
+    totalRecharges: 0,
+    completedOrders: 0
+  });
+
+  // Order filter state
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+
+  // Refund filter state
+  const [refundStatusFilter, setRefundStatusFilter] = useState<string>('all');
+
+  // Token search state
+  const [tokenSearch, setTokenSearch] = useState<string>('');
+
+  // Fetch today's statistics
+  const fetchTodayStats = async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayISO = today.toISOString();
+
+    const { data: todayOrders } = await supabase
+      .from('orders')
+      .select('*')
+      .gte('created_at', todayISO);
+
+    if (todayOrders) {
+      const totalEarnings = todayOrders
+        .filter(o => o.status === 'completed')
+        .reduce((sum, o) => sum + Number(o.total_price), 0);
+
+      const completedOrders = todayOrders.filter(o => o.status === 'completed').length;
+      const totalOrders = todayOrders.length;
+      const totalRecharges = todayOrders.filter(o => o.token_id).length;
+
+      setTodayStats({
+        totalEarnings,
+        totalOrders,
+        totalRecharges,
+        completedOrders
+      });
+    }
+  };
 
   useEffect(() => {
-    checkAdminAccess();
+    checkAuth();
   }, []);
 
-  const checkAdminAccess = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      navigate("/admin/auth");
+  useEffect(() => {
+    if (!isLoading) {
+      fetchData();
+      fetchTodayStats();
+    }
+  }, [activeTab, isLoading]);
+
+  // Subscribe to new orders
+  useEffect(() => {
+    if (!notificationsEnabled) return;
+
+    const channel = supabase
+      .channel('admin-orders-notification')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders' },
+        () => {
+          try {
+            const audio = new Audio('/notification.mp3');
+            audio.play().catch(() => {});
+          } catch {}
+          fetchData();
+          fetchTodayStats();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [notificationsEnabled, activeTab]);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      navigate('/admin/auth');
       return;
     }
 
-    const { data: roles } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id);
+    const { data: adminCheck } = await supabase.rpc('has_role', {
+      _user_id: session.user.id,
+      _role: 'admin',
+    });
 
-    if (!roles || roles.length === 0 || !roles.some(r => r.role === "admin")) {
-      toast.error("ليس لديك صلاحية الوصول");
-      navigate("/admin/auth");
+    if (adminCheck) {
+      setIsAdmin(true);
+      setUserPermissions({
+        can_manage_orders: true,
+        can_manage_products: true,
+        can_manage_tokens: true,
+        can_manage_refunds: true,
+        can_manage_stock: true,
+        can_manage_coupons: true,
+      });
+      setActiveTab('orders');
+      setIsLoading(false);
       return;
     }
 
-    setIsAdmin(true);
-    setLoading(false);
+    const { data: permissions } = await supabase
+      .from('user_permissions')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    const hasAnyPermission = permissions && (
+      (permissions as any).can_manage_orders ||
+      (permissions as any).can_manage_products ||
+      (permissions as any).can_manage_tokens ||
+      (permissions as any).can_manage_refunds ||
+      (permissions as any).can_manage_stock ||
+      (permissions as any).can_manage_coupons
+    );
+
+    if (!hasAnyPermission) {
+      await supabase.auth.signOut();
+      navigate('/admin/auth');
+      return;
+    }
+
+    setUserPermissions({
+      can_manage_orders: (permissions as any).can_manage_orders || false,
+      can_manage_products: (permissions as any).can_manage_products || false,
+      can_manage_tokens: (permissions as any).can_manage_tokens || false,
+      can_manage_refunds: (permissions as any).can_manage_refunds || false,
+      can_manage_stock: (permissions as any).can_manage_stock || false,
+      can_manage_coupons: (permissions as any).can_manage_coupons || false,
+    });
+
+    if ((permissions as any).can_manage_orders) setActiveTab('orders');
+    else if ((permissions as any).can_manage_products) setActiveTab('products');
+    else if ((permissions as any).can_manage_tokens) setActiveTab('tokens');
+    else if ((permissions as any).can_manage_refunds) setActiveTab('refunds');
+    else if ((permissions as any).can_manage_coupons) setActiveTab('coupons');
+
+    setIsLoading(false);
+  };
+
+  const fetchData = async () => {
+    if (activeTab === 'products') {
+      const { data: productsData } = await supabase.from('products').select('*').order('created_at', { ascending: false });
+      const { data: optionsData } = await supabase.from('product_options').select('*');
+      const { data: stockData } = await supabase.from('stock_items').select('*').eq('is_sold', false);
+      setProducts((productsData || []).map(p => ({ ...p, price: p.price || 0, instant_delivery: false })));
+      setProductOptions((optionsData || []).map(opt => ({ ...opt, is_active: opt.is_active ?? true })));
+      setStockItems(stockData || []);
+    } else if (activeTab === 'tokens') {
+      const { data } = await supabase.from('tokens').select('*').order('created_at', { ascending: false });
+      setTokens((data || []).map(t => ({ ...t, is_blocked: t.is_blocked ?? false })));
+    } else if (activeTab === 'orders') {
+      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      setOrders((data || []).map(o => ({ ...o, order_number: o.order_number || o.id.slice(0, 8) })));
+    } else if (activeTab === 'refunds') {
+      const { data } = await supabase.from('refund_requests').select('*').order('created_at', { ascending: false });
+      setRefundRequests(data || []);
+    }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate("/admin/auth");
+    navigate('/admin/auth');
   };
 
-  if (loading) {
+  // Product handlers
+  const openProductModal = (product?: Product) => {
+    if (product) {
+      setEditingProduct(product);
+      setProductForm({
+        name: product.name,
+        price: product.price,
+        duration: product.duration || '',
+        available: product.available || 0,
+        instant_delivery: product.instant_delivery || false
+      });
+      setNewProductOptions([]);
+      setNewStockItems('');
+    } else {
+      setEditingProduct(null);
+      setProductForm({ name: '', price: 0, duration: '', available: 0, instant_delivery: false });
+      setNewProductOptions([]);
+      setNewStockItems('');
+    }
+    setShowProductModal(true);
+  };
+
+  const addNewProductOption = () => {
+    setNewProductOptions([...newProductOptions, { name: '', price: 0, description: '', estimated_time: '', input_type: 'none', duration: '', delivery_type: 'manual', stock_content: '' }]);
+  };
+
+  const updateNewProductOption = (index: number, field: string, value: string | number) => {
+    const updated = [...newProductOptions];
+    updated[index] = { ...updated[index], [field]: value };
+    setNewProductOptions(updated);
+  };
+
+  const removeNewProductOption = (index: number) => {
+    setNewProductOptions(newProductOptions.filter((_, i) => i !== index));
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productForm.name) {
+      toast({ title: 'خطأ', description: 'يرجى إدخال اسم المنتج', variant: 'destructive' });
+      return;
+    }
+
+    if (editingProduct) {
+      const { error } = await supabase
+        .from('products')
+        .update({
+          name: productForm.name,
+          price: productForm.price || null,
+          duration: productForm.duration || null,
+          available: productForm.available || null
+        })
+        .eq('id', editingProduct.id);
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'تم', description: 'تم تحديث المنتج بنجاح' });
+      }
+    } else {
+      const { data: newProduct, error } = await supabase
+        .from('products')
+        .insert({
+          name: productForm.name,
+          price: productForm.price || null,
+          duration: productForm.duration || null,
+          available: productForm.available || null
+        })
+        .select()
+        .single();
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+        return;
+      }
+
+      // Add product options
+      for (const opt of newProductOptions) {
+        if (!opt.name) continue;
+
+        const typeToSave = opt.delivery_type === 'auto' ? 'none' : opt.input_type;
+
+        const { data: insertedOption, error: optError } = await supabase
+          .from('product_options')
+          .insert({
+            product_id: newProduct.id,
+            name: opt.name,
+            price: opt.price || 0,
+            description: opt.description || null,
+            estimated_time: opt.estimated_time || null,
+            type: typeToSave,
+            duration: opt.duration || null,
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (optError) continue;
+
+        // If auto delivery, add stock items for this option
+        if (opt.delivery_type === 'auto' && opt.stock_content.trim()) {
+          const items = opt.stock_content.split('\n').filter(item => item.trim());
+          if (items.length > 0) {
+            const stockToInsert = items.map(content => ({
+              product_option_id: insertedOption.id,
+              option_id: insertedOption.id,
+              content: content.trim(),
+              is_sold: false
+            }));
+            await supabase.from('stock_items').insert(stockToInsert);
+          }
+        }
+      }
+
+      toast({ title: 'تم', description: 'تم إضافة المنتج بنجاح' });
+    }
+
+    setShowProductModal(false);
+    setNewProductOptions([]);
+    fetchData();
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم حذف المنتج' });
+      fetchData();
+    }
+  };
+
+  // Option handlers
+  const openOptionModal = (productId: string, option?: ProductOption) => {
+    setCurrentProductId(productId);
+    if (option) {
+      setEditingOption(option);
+      const isAuto = option.type === 'none';
+      setOptionForm({
+        name: option.name,
+        type: isAuto ? 'email_password' : (option.type || 'email_password'),
+        description: option.description || '',
+        estimated_time: option.estimated_time || '',
+        price: option.price || 0,
+        duration: option.duration || '',
+        delivery_type: isAuto ? 'auto' : 'manual',
+        is_active: option.is_active !== false
+      });
+    } else {
+      setEditingOption(null);
+      setOptionForm({ name: '', type: 'email_password', description: '', estimated_time: '', price: 0, duration: '', delivery_type: 'manual', is_active: true });
+    }
+    setShowOptionModal(true);
+  };
+
+  const handleSaveOption = async () => {
+    if (!optionForm.name || !currentProductId) {
+      toast({ title: 'خطأ', description: 'يرجى إدخال اسم الخيار', variant: 'destructive' });
+      return;
+    }
+
+    const typeToSave = optionForm.delivery_type === 'auto' ? 'none' : optionForm.type;
+
+    if (editingOption) {
+      const { error } = await supabase
+        .from('product_options')
+        .update({
+          name: optionForm.name,
+          type: typeToSave,
+          description: optionForm.description || null,
+          estimated_time: optionForm.estimated_time || null,
+          price: optionForm.price || 0,
+          duration: optionForm.duration || null,
+          is_active: optionForm.is_active
+        })
+        .eq('id', editingOption.id);
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'تم', description: 'تم تحديث المنتج بنجاح' });
+      }
+    } else {
+      const { error } = await supabase.from('product_options').insert({
+        product_id: currentProductId,
+        name: optionForm.name,
+        type: typeToSave,
+        description: optionForm.description || null,
+        estimated_time: optionForm.estimated_time || null,
+        price: optionForm.price || 0,
+        duration: optionForm.duration || null,
+        is_active: optionForm.is_active
+      });
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'تم', description: 'تم إضافة المنتج بنجاح' });
+      }
+    }
+
+    setShowOptionModal(false);
+    fetchData();
+  };
+
+  const handleDeleteOption = async (id: string) => {
+    const { error } = await supabase.from('product_options').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم حذف الخيار' });
+      fetchData();
+    }
+  };
+
+  // Token handlers
+  const openTokenModal = (token?: Token) => {
+    if (token) {
+      setEditingToken(token);
+      setTokenForm({ token: token.token, balance: token.balance });
+    } else {
+      setEditingToken(null);
+      setTokenForm({ token: '', balance: 0 });
+    }
+    setShowTokenModal(true);
+  };
+
+  const handleSaveToken = async () => {
+    if (!tokenForm.token) {
+      toast({ title: 'خطأ', description: 'يرجى إدخال التوكن', variant: 'destructive' });
+      return;
+    }
+
+    if (editingToken) {
+      const { error } = await supabase
+        .from('tokens')
+        .update({ token: tokenForm.token, balance: tokenForm.balance })
+        .eq('id', editingToken.id);
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'تم', description: 'تم تحديث التوكن بنجاح' });
+      }
+    } else {
+      const { error } = await supabase.from('tokens').insert({
+        token: tokenForm.token,
+        balance: tokenForm.balance
+      });
+
+      if (error) {
+        toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'تم', description: 'تم إضافة التوكن بنجاح' });
+      }
+    }
+
+    setShowTokenModal(false);
+    fetchData();
+  };
+
+  const handleDeleteToken = async (id: string) => {
+    const { error } = await supabase.from('tokens').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم حذف التوكن' });
+      fetchData();
+    }
+  };
+
+  const handleToggleBlockToken = async (token: Token) => {
+    const { error } = await supabase
+      .from('tokens')
+      .update({ is_blocked: !token.is_blocked })
+      .eq('id', token.id);
+
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({
+        title: 'تم',
+        description: token.is_blocked ? 'تم فك حظر التوكن' : 'تم حظر التوكن'
+      });
+      fetchData();
+    }
+  };
+
+  // Order handlers
+  const handleUpdateOrderStatus = async (id: string, status: string) => {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', id);
+
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم تحديث حالة الطلب' });
+      fetchData();
+      fetchTodayStats();
+    }
+  };
+
+  const handleDeleteOrder = async (id: string) => {
+    const { error } = await supabase.from('orders').delete().eq('id', id);
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم حذف الطلب' });
+      fetchData();
+      fetchTodayStats();
+    }
+  };
+
+  const handleRequestNewLink = async (orderId: string) => {
+    const { error } = await supabase.from('order_messages').insert({
+      order_id: orderId,
+      sender_type: 'admin',
+      message: '⚠️ الرابط المرسل غير صحيح أو منتهي الصلاحية. يرجى إرسال رابط جديد في الشات.'
+    });
+
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم إرسال طلب رابط جديد للعميل' });
+    }
+  };
+
+  // Refund handlers
+  const handleApproveRefund = async (refund: RefundRequest, adminNote: string, refundAmount: number) => {
+    const orderInfo = orders.find(o => o.id === refund.order_id);
+    
+    if (!orderInfo) {
+      toast({ title: 'خطأ', description: 'لم يتم العثور على الطلب', variant: 'destructive' });
+      return;
+    }
+
+    if (refundAmount > Number(orderInfo.total_price)) {
+      toast({ title: 'خطأ', description: 'مبلغ الاسترداد أكبر من مبلغ الطلب', variant: 'destructive' });
+      return;
+    }
+
+    const { data: tokenData } = await supabase
+      .from('tokens')
+      .select('id, balance')
+      .eq('id', refund.token_id)
+      .maybeSingle();
+
+    if (!tokenData) {
+      toast({ title: 'خطأ', description: 'لم يتم العثور على التوكن', variant: 'destructive' });
+      return;
+    }
+
+    const newBalance = Number(tokenData.balance) + refundAmount;
+    const { error: balanceError } = await supabase
+      .from('tokens')
+      .update({ balance: newBalance })
+      .eq('id', tokenData.id);
+
+    if (balanceError) {
+      toast({ title: 'خطأ', description: balanceError.message, variant: 'destructive' });
+      return;
+    }
+
+    const { error: refundError } = await supabase
+      .from('refund_requests')
+      .update({
+        status: 'approved',
+        admin_notes: adminNote || null
+      })
+      .eq('id', refund.id);
+
+    if (refundError) {
+      toast({ title: 'خطأ', description: refundError.message, variant: 'destructive' });
+      return;
+    }
+
+    toast({ title: 'تم', description: `تم استرداد ${refundAmount} ر.س للتوكن` });
+    fetchData();
+  };
+
+  const handleRejectRefund = async (refundId: string, adminNote: string) => {
+    const { error } = await supabase
+      .from('refund_requests')
+      .update({
+        status: 'rejected',
+        admin_notes: adminNote || null
+      })
+      .eq('id', refundId);
+
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: 'تم رفض طلب الاسترداد' });
+      fetchData();
+    }
+  };
+
+  // Stock handlers
+  const openStockModal = (productId: string, optionId?: string) => {
+    setCurrentStockProductId(productId);
+    setCurrentStockOptionId(optionId || null);
+    setNewStockItems('');
+    setShowStockModal(true);
+  };
+
+  const handleAddStock = async () => {
+    if (!newStockItems.trim() || !currentStockProductId) return;
+
+    const items = newStockItems.split('\n').filter(item => item.trim());
+    if (items.length === 0) return;
+
+    const stockToInsert = items.map(content => ({
+      product_option_id: currentStockOptionId || currentStockProductId,
+      option_id: currentStockOptionId,
+      content: content.trim(),
+      is_sold: false
+    }));
+
+    const { error } = await supabase.from('stock_items').insert(stockToInsert);
+
+    if (error) {
+      toast({ title: 'خطأ', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'تم', description: `تم إضافة ${items.length} عنصر للمخزون` });
+      setShowStockModal(false);
+      fetchData();
+    }
+  };
+
+  const getProductStockCount = (productId: string) => {
+    return stockItems.filter(s => s.product_option_id === productId && !s.is_sold).length;
+  };
+
+  const getOptionStockCount = (optionId: string) => {
+    return stockItems.filter(s => s.option_id === optionId && !s.is_sold).length;
+  };
+
+  // Filter orders
+  const filteredOrders = orderStatusFilter === 'all'
+    ? orders
+    : orders.filter(o => o.status === orderStatusFilter);
+
+  // Filter refunds
+  const filteredRefunds = refundStatusFilter === 'all'
+    ? refundRequests
+    : refundRequests.filter(r => r.status === refundStatusFilter);
+
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (!isAdmin) {
-    return null;
-  }
-
   return (
     <div className="min-h-screen bg-background font-cairo">
-      <header className="bg-card border-b border-border sticky top-0 z-50">
+      {/* Header */}
+      <header className="bg-card border-b border-border sticky top-0 z-20">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-primary">لوحة التحكم</h1>
-            <div className="flex items-center gap-4">
-              {newOrdersCount > 0 && (
-                <div className="relative">
-                  <Bell className="h-6 w-6 text-primary animate-bounce" />
-                  <span className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {newOrdersCount}
-                  </span>
-                </div>
-              )}
-              <Button variant="outline" onClick={handleLogout}>
-                <LogOut className="h-4 w-4 ml-2" />
-                تسجيل الخروج
-              </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
+                <Settings className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold">لوحة التحكم</h1>
+                <p className="text-xs text-muted-foreground">إدارة المنتجات والطلبات</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                  notificationsEnabled
+                    ? 'bg-success/10 text-success hover:bg-success/20'
+                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                }`}
+                title={notificationsEnabled ? 'إيقاف الإشعارات' : 'تفعيل الإشعارات'}
+              >
+                {notificationsEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+                <span className="hidden sm:inline text-sm">{notificationsEnabled ? 'الإشعارات مفعلة' : 'الإشعارات متوقفة'}</span>
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              >
+                <LogOut className="w-5 h-5" />
+                <span className="hidden sm:inline">خروج</span>
+              </button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="products" className="space-y-6" onValueChange={(value) => {
-          if (value === "orders") {
-            clearNotifications();
-          }
-        }}>
-          <TabsList className="grid grid-cols-4 md:grid-cols-8 gap-2 h-auto p-2">
-            <TabsTrigger value="products" className="flex flex-col gap-1 py-2">
-              <Package className="h-4 w-4" />
-              <span className="text-xs">المنتجات</span>
-            </TabsTrigger>
-            <TabsTrigger value="tokens" className="flex flex-col gap-1 py-2">
-              <Key className="h-4 w-4" />
-              <span className="text-xs">التوكنات</span>
-            </TabsTrigger>
-            <TabsTrigger value="orders" className="flex flex-col gap-1 py-2 relative">
-              <ShoppingCart className="h-4 w-4" />
-              <span className="text-xs">الطلبات</span>
-              {newOrdersCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                  {newOrdersCount}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="recharge" className="flex flex-col gap-1 py-2">
-              <RefreshCw className="h-4 w-4" />
-              <span className="text-xs">الشحن</span>
-            </TabsTrigger>
-            <TabsTrigger value="refunds" className="flex flex-col gap-1 py-2">
-              <RefreshCw className="h-4 w-4" />
-              <span className="text-xs">الاسترداد</span>
-            </TabsTrigger>
-            <TabsTrigger value="coupons" className="flex flex-col gap-1 py-2">
-              <Tag className="h-4 w-4" />
-              <span className="text-xs">الكوبونات</span>
-            </TabsTrigger>
-            <TabsTrigger value="payments" className="flex flex-col gap-1 py-2">
-              <CreditCard className="h-4 w-4" />
-              <span className="text-xs">الدفع</span>
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex flex-col gap-1 py-2">
-              <Users className="h-4 w-4" />
-              <span className="text-xs">المستخدمين</span>
-            </TabsTrigger>
-          </TabsList>
+      <div className="container mx-auto px-4 py-6">
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          {[
+            { id: 'orders', label: 'الطلبات', icon: ShoppingBag, count: orders.length, permission: 'can_manage_orders' },
+            { id: 'recharges', label: 'طلبات الشحن', icon: CreditCard, count: null, permission: 'can_manage_tokens' },
+            { id: 'products', label: 'الأقسام', icon: Package, count: products.length, permission: 'can_manage_products' },
+            { id: 'tokens', label: 'التوكنات', icon: Key, count: tokens.length, permission: 'can_manage_tokens' },
+            { id: 'refunds', label: 'الاستردادات', icon: RotateCcw, count: refundRequests.filter(r => r.status === 'pending').length, permission: 'can_manage_refunds' },
+            { id: 'payment_methods', label: 'طرق الدفع', icon: Wallet, count: null, permission: 'can_manage_tokens' },
+            { id: 'coupons', label: 'الكوبونات', icon: Ticket, count: null, permission: 'can_manage_coupons' },
+            { id: 'users', label: 'المستخدمين', icon: Shield, count: null, permission: 'can_manage_stock' },
+          ].filter(tab => isAdmin || (userPermissions && userPermissions[tab.permission as keyof UserPermissions])).map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                    : 'bg-card hover:bg-muted border border-border'
+                }`}
+              >
+                <Icon className="w-5 h-5" />
+                <span>{tab.label}</span>
+                {tab.count !== null && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                    activeTab === tab.id ? 'bg-primary-foreground/20' : 'bg-muted'
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-          <TabsContent value="products">
-            <ProductManagement />
-          </TabsContent>
-          <TabsContent value="tokens">
-            <TokenManagement />
-          </TabsContent>
-          <TabsContent value="orders">
-            <OrderManagement />
-          </TabsContent>
-          <TabsContent value="recharge">
-            <RechargeManagement />
-          </TabsContent>
-          <TabsContent value="refunds">
-            <RefundManagement />
-          </TabsContent>
-          <TabsContent value="coupons">
-            <CouponManagement />
-          </TabsContent>
-          <TabsContent value="payments">
-            <PaymentMethodsManagement />
-          </TabsContent>
-          <TabsContent value="users">
-            <UserManagement />
-          </TabsContent>
-        </Tabs>
-      </main>
+        {/* Today's Statistics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="bg-card rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-success" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">أرباح اليوم</p>
+                <p className="text-xl font-bold text-success">{todayStats.totalEarnings} ر.س</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <ShoppingBag className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">طلبات اليوم</p>
+                <p className="text-xl font-bold">{todayStats.totalOrders}</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-info/10 flex items-center justify-center">
+                <CheckCircle2 className="w-5 h-5 text-info" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">مكتملة</p>
+                <p className="text-xl font-bold">{todayStats.completedOrders}</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-warning" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">عمليات الشحن</p>
+                <p className="text-xl font-bold">{todayStats.totalRecharges}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Orders Tab */}
+        {activeTab === 'orders' && (
+          <div className="space-y-4">
+            {/* Filter */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setOrderStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  orderStatusFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                الكل ({orders.length})
+              </button>
+              {statusOptions.map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setOrderStatusFilter(opt.value)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    orderStatusFilter === opt.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {opt.label} ({orders.filter(o => o.status === opt.value).length})
+                </button>
+              ))}
+            </div>
+
+            {filteredOrders.length === 0 ? (
+              <div className="text-center py-12 bg-card rounded-xl border border-border">
+                <ShoppingBag className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground">لا توجد طلبات</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {filteredOrders.map(order => (
+                  <OrderCard
+                    key={order.id}
+                    order={order}
+                    onUpdateStatus={handleUpdateOrderStatus}
+                    onDelete={handleDeleteOrder}
+                    onRequestNewLink={handleRequestNewLink}
+                    products={products}
+                    productOptions={productOptions}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Products Tab */}
+        {activeTab === 'products' && (
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <button
+                onClick={() => openProductModal()}
+                className="btn-primary px-4 py-2 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                إضافة منتج
+              </button>
+            </div>
+
+            {products.length === 0 ? (
+              <div className="text-center py-12 bg-card rounded-xl border border-border">
+                <Package className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground">لا توجد منتجات</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {products.map(product => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    options={productOptions.filter(o => o.product_id === product.id)}
+                    stockCount={getProductStockCount(product.id)}
+                    isExpanded={expandedProduct === product.id}
+                    onToggleExpand={() => setExpandedProduct(expandedProduct === product.id ? null : product.id)}
+                    onEdit={() => openProductModal(product)}
+                    onDelete={() => handleDeleteProduct(product.id)}
+                    onAddOption={() => openOptionModal(product.id)}
+                    onEditOption={(opt) => openOptionModal(product.id, opt)}
+                    onDeleteOption={handleDeleteOption}
+                    onManageStock={() => openStockModal(product.id)}
+                    onManageOptionStock={(optId) => openStockModal(product.id, optId)}
+                    getOptionStockCount={getOptionStockCount}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tokens Tab */}
+        {activeTab === 'tokens' && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row gap-3 justify-between">
+              <div className="relative flex-1 max-w-md">
+                <input
+                  type="text"
+                  placeholder="بحث بالتوكن..."
+                  value={tokenSearch}
+                  onChange={(e) => setTokenSearch(e.target.value)}
+                  className="input-field w-full pr-10"
+                />
+                <Key className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              </div>
+              <button
+                onClick={() => openTokenModal()}
+                className="btn-primary px-4 py-2 flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4" />
+                إضافة توكن
+              </button>
+            </div>
+
+            {(() => {
+              const filteredTokens = tokens.filter(t =>
+                t.token.toLowerCase().includes(tokenSearch.toLowerCase())
+              );
+
+              return filteredTokens.length === 0 ? (
+                <div className="text-center py-12 bg-card rounded-xl border border-border">
+                  <Key className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-muted-foreground">
+                    {tokenSearch ? 'لا توجد نتائج للبحث' : 'لا توجد توكنات'}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredTokens.map(token => (
+                    <div key={token.id} className={`bg-card rounded-xl border p-4 ${token.is_blocked ? 'border-destructive/50 bg-destructive/5' : 'border-border'}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Key className={`w-4 h-4 ${token.is_blocked ? 'text-destructive' : 'text-primary'}`} />
+                          <span className="font-mono text-sm truncate max-w-[150px]">{token.token}</span>
+                          {token.is_blocked && (
+                            <span className="text-xs bg-destructive/20 text-destructive px-2 py-0.5 rounded-md">محظور</span>
+                          )}
+                        </div>
+                        <span className={`text-lg font-bold ${token.is_blocked ? 'text-muted-foreground' : 'text-primary'}`}>{token.balance} ر.س</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openTokenModal(token)}
+                          className="flex-1 py-2 bg-muted text-muted-foreground rounded-lg hover:bg-muted/80 transition-colors text-sm"
+                        >
+                          تعديل
+                        </button>
+                        <button
+                          onClick={() => handleToggleBlockToken(token)}
+                          className={`px-3 py-2 border rounded-lg transition-colors ${
+                            token.is_blocked
+                              ? 'border-success/30 text-success hover:bg-success/10'
+                              : 'border-warning/30 text-warning hover:bg-warning/10'
+                          }`}
+                          title={token.is_blocked ? 'فك الحظر' : 'حظر التوكن'}
+                        >
+                          <Ban className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteToken(token.id)}
+                          className="px-3 py-2 border border-destructive/30 text-destructive rounded-lg hover:bg-destructive/10 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Refunds Tab */}
+        {activeTab === 'refunds' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-primary" />
+                طلبات الاسترداد
+              </h2>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setRefundStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  refundStatusFilter === 'all' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                الكل ({refundRequests.length})
+              </button>
+              <button
+                onClick={() => setRefundStatusFilter('pending')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  refundStatusFilter === 'pending' ? 'bg-warning text-warning-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                قيد المراجعة ({refundRequests.filter(r => r.status === 'pending').length})
+              </button>
+              <button
+                onClick={() => setRefundStatusFilter('approved')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  refundStatusFilter === 'approved' ? 'bg-success text-success-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                تم الاسترداد ({refundRequests.filter(r => r.status === 'approved').length})
+              </button>
+              <button
+                onClick={() => setRefundStatusFilter('rejected')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  refundStatusFilter === 'rejected' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                مرفوض ({refundRequests.filter(r => r.status === 'rejected').length})
+              </button>
+            </div>
+
+            {filteredRefunds.length === 0 ? (
+              <div className="text-center py-12 bg-card rounded-xl border border-border">
+                <RotateCcw className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-muted-foreground">لا توجد طلبات استرداد</p>
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {filteredRefunds.map(refund => {
+                  const orderInfo = orders.find(o => o.id === refund.order_id);
+                  const tokenInfo = tokens.find(t => t.id === refund.token_id);
+
+                  return (
+                    <RefundCard
+                      key={refund.id}
+                      refund={refund}
+                      orderInfo={orderInfo}
+                      tokenValue={tokenInfo?.token || ''}
+                      onApprove={handleApproveRefund}
+                      onReject={handleRejectRefund}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Users Tab */}
+        {activeTab === 'users' && <UserManagement />}
+
+        {/* Coupons Tab */}
+        {activeTab === 'coupons' && <CouponManagement />}
+
+        {/* Recharges Tab */}
+        {activeTab === 'recharges' && <RechargeManagement />}
+
+        {/* Payment Methods Tab */}
+        {activeTab === 'payment_methods' && <PaymentMethodsManagement />}
+      </div>
+
+      {/* Product Modal */}
+      {showProductModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl w-full max-w-2xl shadow-2xl my-8">
+            <div className="p-6 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Package className="w-5 h-5 text-primary" />
+                {editingProduct ? 'تعديل القسم' : 'إضافة قسم جديد'}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">القسم يحتوي على المنتجات المتشابهة (مثل: حسابات جيميل)</p>
+            </div>
+
+            <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto">
+              <div className="bg-muted/20 rounded-xl p-4 border border-border">
+                <h3 className="text-sm font-bold text-primary mb-4 flex items-center gap-2">
+                  <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">1</span>
+                  معلومات القسم الأساسية
+                </h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-foreground mb-2 block">اسم القسم *</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: حسابات جيميل، حسابات نتفليكس..."
+                      value={productForm.name}
+                      onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                      className="input-field w-full"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {!editingProduct && (
+                <div className="bg-primary/5 rounded-xl p-4 border border-primary/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-primary flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs">2</span>
+                      المنتجات (الخيارات المتاحة)
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={addNewProductOption}
+                      className="bg-primary text-primary-foreground text-sm px-3 py-1.5 rounded-lg flex items-center gap-1 font-medium hover:bg-primary/90 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" /> إضافة منتج
+                    </button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    مثال: لو القسم "حسابات جيميل" → المنتجات تكون: "شهر واحد"، "شهرين"، "3 شهور"
+                  </p>
+
+                  {newProductOptions.length === 0 ? (
+                    <div className="text-center py-8 bg-background/50 rounded-lg border-2 border-dashed border-border">
+                      <LayoutGrid className="w-10 h-10 text-muted-foreground/40 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">لا توجد منتجات</p>
+                      <p className="text-xs text-muted-foreground mt-1">اضغط على "إضافة منتج" لإضافة خيارات للقسم</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {newProductOptions.map((opt, index) => (
+                        <div key={index} className="bg-background rounded-lg p-4 border border-border shadow-sm">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-sm font-bold text-foreground flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-primary/10 text-primary flex items-center justify-center text-xs">{index + 1}</span>
+                              المنتج #{index + 1}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removeNewProductOption(index)}
+                              className="p-1.5 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">اسم المنتج *</label>
+                              <input
+                                type="text"
+                                placeholder="مثال: نتفليكس برايم"
+                                value={opt.name}
+                                onChange={(e) => updateNewProductOption(index, 'name', e.target.value)}
+                                className="input-field text-sm w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">مدة الاشتراك</label>
+                              <input
+                                type="text"
+                                placeholder="مثال: شهر واحد"
+                                value={opt.duration}
+                                onChange={(e) => updateNewProductOption(index, 'duration', e.target.value)}
+                                className="input-field text-sm w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-muted-foreground mb-1 block">السعر (ر.س)</label>
+                              <input
+                                type="number"
+                                placeholder="0"
+                                value={opt.price}
+                                onChange={(e) => updateNewProductOption(index, 'price', parseFloat(e.target.value) || 0)}
+                                className="input-field text-sm w-full"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mb-3">
+                            <label className="text-xs text-muted-foreground mb-1 block">نوع التسليم</label>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => updateNewProductOption(index, 'delivery_type', 'manual')}
+                                className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                                  opt.delivery_type === 'manual'
+                                    ? 'bg-warning/10 border-warning text-warning'
+                                    : 'border-border hover:bg-muted'
+                                }`}
+                              >
+                                <Clock className="w-3 h-3" />
+                                يدوي
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateNewProductOption(index, 'delivery_type', 'auto')}
+                                className={`flex-1 py-2 px-3 rounded-lg border text-xs font-medium transition-all flex items-center justify-center gap-1 ${
+                                  opt.delivery_type === 'auto'
+                                    ? 'bg-success/10 border-success text-success'
+                                    : 'border-border hover:bg-muted'
+                                }`}
+                              >
+                                <Zap className="w-3 h-3" />
+                                تلقائي
+                              </button>
+                            </div>
+                          </div>
+
+                          {opt.delivery_type === 'manual' && (
+                            <div className="grid grid-cols-2 gap-3 p-2 bg-warning/5 rounded-lg">
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">البيانات المطلوبة</label>
+                                <select
+                                  value={opt.input_type}
+                                  onChange={(e) => updateNewProductOption(index, 'input_type', e.target.value)}
+                                  className="input-field text-xs w-full"
+                                >
+                                  <option value="email_password">إيميل وباسورد</option>
+                                  <option value="link">رابط فقط</option>
+                                  <option value="text">نص</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-muted-foreground mb-1 block">الوقت المتوقع</label>
+                                <input
+                                  type="text"
+                                  placeholder="24 ساعة"
+                                  value={opt.estimated_time}
+                                  onChange={(e) => updateNewProductOption(index, 'estimated_time', e.target.value)}
+                                  className="input-field text-xs w-full"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {opt.delivery_type === 'auto' && (
+                            <div className="p-2 bg-success/5 rounded-lg">
+                              <label className="text-xs text-muted-foreground mb-1 block">المخزون (كل سطر = عنصر)</label>
+                              <textarea
+                                value={opt.stock_content}
+                                onChange={(e) => updateNewProductOption(index, 'stock_content', e.target.value)}
+                                className="input-field w-full h-20 text-xs font-mono"
+                                placeholder="email1@example.com:password1&#10;email2@example.com:password2"
+                              />
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {opt.stock_content.split('\n').filter(l => l.trim()).length} عنصر
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-border flex gap-3">
+              <button onClick={handleSaveProduct} className="btn-primary flex-1 py-3 flex items-center justify-center gap-2">
+                <Save className="w-4 h-4" />
+                {editingProduct ? 'حفظ التغييرات' : 'إضافة القسم'}
+              </button>
+              <button onClick={() => setShowProductModal(false)} className="px-6 py-3 border border-border rounded-lg hover:bg-muted transition-colors">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Option Modal */}
+      {showOptionModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl border border-border w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card">
+              <h2 className="text-lg font-bold">{editingOption ? 'تعديل المنتج' : 'إضافة منتج جديد'}</h2>
+              <button onClick={() => setShowOptionModal(false)} className="p-2 hover:bg-muted rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">اسم المنتج *</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: شهر واحد"
+                    value={optionForm.name}
+                    onChange={(e) => setOptionForm({ ...optionForm, name: e.target.value })}
+                    className="input-field w-full"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">السعر (ر.س) *</label>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={optionForm.price}
+                    onChange={(e) => setOptionForm({ ...optionForm, price: parseFloat(e.target.value) || 0 })}
+                    className="input-field w-full"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-2 block">نوع التسليم</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOptionForm({ ...optionForm, delivery_type: 'manual', type: optionForm.type === 'none' ? 'email_password' : optionForm.type })}
+                    className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                      optionForm.delivery_type === 'manual'
+                        ? 'bg-warning/10 border-warning text-warning'
+                        : 'border-border hover:bg-muted'
+                    }`}
+                  >
+                    <Clock className="w-4 h-4" />
+                    يدوي (خدمات)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOptionForm({ ...optionForm, delivery_type: 'auto' })}
+                    className={`flex-1 py-2.5 px-3 rounded-lg border text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                      optionForm.delivery_type === 'auto'
+                        ? 'bg-success/10 border-success text-success'
+                        : 'border-border hover:bg-muted'
+                    }`}
+                  >
+                    <Zap className="w-4 h-4" />
+                    تلقائي (اكونتات)
+                  </button>
+                </div>
+              </div>
+
+              {optionForm.delivery_type === 'manual' && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-warning/5 rounded-lg border border-warning/20">
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">البيانات المطلوبة من العميل</label>
+                    <select
+                      value={optionForm.type}
+                      onChange={(e) => setOptionForm({ ...optionForm, type: e.target.value })}
+                      className="input-field w-full"
+                    >
+                      <option value="email_password">إيميل وباسورد</option>
+                      <option value="link">رابط فقط</option>
+                      <option value="text">نص</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground mb-2 block">الوقت المتوقع للتنفيذ</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: 24 ساعة"
+                      value={optionForm.estimated_time}
+                      onChange={(e) => setOptionForm({ ...optionForm, estimated_time: e.target.value })}
+                      className="input-field w-full"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {optionForm.delivery_type === 'auto' && (
+                <div className="p-3 bg-success/5 rounded-lg border border-success/20 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-success font-medium flex items-center gap-2">
+                        <Zap className="w-4 h-4" />
+                        استلام فوري من المخزون
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        المخزون الحالي: {editingOption ? getOptionStockCount(editingOption.id) : 0} عنصر
+                      </p>
+                    </div>
+                    {editingOption && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowOptionModal(false);
+                          openStockModal(currentProductId!, editingOption.id);
+                        }}
+                        className="btn-primary text-sm px-4 py-2 flex items-center gap-2"
+                      >
+                        <Database className="w-4 h-4" />
+                        إدارة المخزون
+                      </button>
+                    )}
+                  </div>
+                  {!editingOption && (
+                    <p className="text-xs text-muted-foreground">
+                      يمكنك إضافة المخزون بعد حفظ المنتج من خلال زر "إدارة المخزون"
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
+                <div>
+                  <p className="text-sm font-medium">حالة الخدمة</p>
+                  <p className="text-xs text-muted-foreground">
+                    {optionForm.is_active ? 'نشط - العملاء يرون أنك متاح' : 'غير نشط - العملاء يرون أنك غير متاح'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOptionForm({ ...optionForm, is_active: !optionForm.is_active })}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    optionForm.is_active ? 'bg-success' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                    optionForm.is_active ? 'right-1' : 'left-1'
+                  }`} />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-muted-foreground mb-2 block">الوصف (اختياري)</label>
+                <input
+                  type="text"
+                  placeholder="وصف مختصر للمنتج..."
+                  value={optionForm.description}
+                  onChange={(e) => setOptionForm({ ...optionForm, description: e.target.value })}
+                  className="input-field w-full"
+                />
+              </div>
+            </div>
+            <div className="p-6 border-t border-border flex gap-3">
+              <button onClick={handleSaveOption} className="btn-primary flex-1 py-3 flex items-center justify-center gap-2">
+                <Save className="w-4 h-4" />
+                {editingOption ? 'حفظ التغييرات' : 'إضافة المنتج'}
+              </button>
+              <button onClick={() => setShowOptionModal(false)} className="px-6 py-3 border border-border rounded-lg hover:bg-muted transition-colors">
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Token Modal */}
+      {showTokenModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl border border-border w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-bold">{editingToken ? 'تعديل التوكن' : 'إضافة توكن جديد'}</h2>
+              <button onClick={() => setShowTokenModal(false)} className="p-2 hover:bg-muted rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">التوكن</label>
+                <input
+                  type="text"
+                  value={tokenForm.token}
+                  onChange={(e) => setTokenForm({ ...tokenForm, token: e.target.value })}
+                  className="input-field w-full font-mono"
+                  placeholder="TOKEN123"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">الرصيد</label>
+                <input
+                  type="number"
+                  value={tokenForm.balance}
+                  onChange={(e) => setTokenForm({ ...tokenForm, balance: Number(e.target.value) })}
+                  className="input-field w-full"
+                  min={0}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-border">
+              <button onClick={() => setShowTokenModal(false)} className="flex-1 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors">
+                إلغاء
+              </button>
+              <button onClick={handleSaveToken} className="btn-primary flex-1 py-2.5">
+                حفظ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stock Modal */}
+      {showStockModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-xl border border-border w-full max-w-md">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h2 className="text-lg font-bold">إضافة للمخزون</h2>
+              <button onClick={() => setShowStockModal(false)} className="p-2 hover:bg-muted rounded-lg">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">المحتوى (كل سطر = عنصر واحد)</label>
+                <textarea
+                  value={newStockItems}
+                  onChange={(e) => setNewStockItems(e.target.value)}
+                  className="input-field w-full h-40 font-mono text-sm"
+                  placeholder="email1@example.com:password1&#10;email2@example.com:password2&#10;..."
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {newStockItems.split('\n').filter(l => l.trim()).length} عنصر
+              </p>
+            </div>
+            <div className="flex gap-3 p-4 border-t border-border">
+              <button onClick={() => setShowStockModal(false)} className="flex-1 py-2.5 border border-border rounded-lg hover:bg-muted transition-colors">
+                إلغاء
+              </button>
+              <button onClick={handleAddStock} className="btn-primary flex-1 py-2.5">
+                إضافة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
