@@ -332,6 +332,7 @@ export type Database = {
           payment_method: string | null
           payment_method_id: string | null
           payment_proof: string | null
+          proof_image_url: string | null
           status: string
           token_id: string
           updated_at: string
@@ -345,6 +346,7 @@ export type Database = {
           payment_method?: string | null
           payment_method_id?: string | null
           payment_proof?: string | null
+          proof_image_url?: string | null
           status?: string
           token_id: string
           updated_at?: string
@@ -358,6 +360,7 @@ export type Database = {
           payment_method?: string | null
           payment_method_id?: string | null
           payment_proof?: string | null
+          proof_image_url?: string | null
           status?: string
           token_id?: string
           updated_at?: string

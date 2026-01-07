@@ -13,7 +13,6 @@ interface PaymentMethod {
   type: string | null;
   account_number: string | null;
   account_name: string | null;
-  account_info: string;
   instructions: string | null;
   is_active: boolean;
 }
@@ -46,7 +45,6 @@ export const RechargeRequest = ({ tokenId, onSuccess, onTokenGenerated }: Rechar
       const { data: methods } = await supabase
         .from('payment_methods')
         .select('*')
-        .eq('is_active', true)
         .order('display_order');
       setPaymentMethods((methods || []) as PaymentMethod[]);
 
@@ -111,34 +109,31 @@ export const RechargeRequest = ({ tokenId, onSuccess, onTokenGenerated }: Rechar
         localStorage.setItem(TOKEN_STORAGE_KEY, newToken);
       }
 
-      // Convert image to base64 and store in payment_proof column
-      const reader = new FileReader();
-      reader.readAsDataURL(proofImage);
-      
-      await new Promise<void>((resolve, reject) => {
-        reader.onload = async () => {
-          try {
-            const base64Image = reader.result as string;
-            
-            const { error: insertError } = await supabase
-              .from('recharge_requests')
-              .insert({
-                token_id: finalTokenId,
-                amount: selectedAmount,
-                payment_method: selectedMethod.name,
-                payment_method_id: selectedMethod.id,
-                payment_proof: base64Image,
-                status: 'pending'
-              });
+      const fileExt = proofImage.name.split('.').pop();
+      const fileName = `${finalTokenId}-${Date.now()}.${fileExt}`;
 
-            if (insertError) throw insertError;
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        };
-        reader.onerror = () => reject(new Error('Failed to read image'));
-      });
+      const { error: uploadError } = await supabase.storage
+        .from('payment-proofs')
+        .upload(fileName, proofImage);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('payment-proofs')
+        .getPublicUrl(fileName);
+
+      const { error: insertError } = await supabase
+        .from('recharge_requests')
+        .insert({
+          token_id: finalTokenId,
+          amount: selectedAmount,
+          payment_method: selectedMethod.name,
+          payment_method_id: selectedMethod.id,
+          proof_image_url: publicUrl,
+          status: 'pending'
+        });
+
+      if (insertError) throw insertError;
 
       setIsSubmitted(true);
       toast.success("تم إرسال الطلب!");
@@ -240,15 +235,15 @@ export const RechargeRequest = ({ tokenId, onSuccess, onTokenGenerated }: Rechar
       {/* معلومات طريقة الدفع */}
       {selectedMethod && (
         <div className="p-4 bg-gradient-to-b from-primary/10 to-primary/5 rounded-xl border border-primary/30 space-y-3 overflow-hidden">
-          {(selectedMethod.account_number || selectedMethod.account_info) && (
+          {selectedMethod.account_number && (
             <div className="flex items-center gap-2 p-3 bg-card rounded-lg border border-border shadow-sm" dir="ltr">
               <span className="font-mono text-sm font-bold text-foreground flex-1 break-all select-all text-left">
-                {selectedMethod.account_number || selectedMethod.account_info}
+                {selectedMethod.account_number}
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  navigator.clipboard.writeText(selectedMethod.account_number || selectedMethod.account_info || '');
+                  navigator.clipboard.writeText(selectedMethod.account_number || '');
                   toast.success("تم نسخ الرقم!");
                 }}
                 className="flex-shrink-0 p-2 bg-primary hover:bg-primary/90 rounded-lg transition-colors"
