@@ -831,75 +831,25 @@ const Admin = () => {
   }, [activeTab, isLoading]);
 
   const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
+    // التحقق من تسجيل الدخول المحلي
+    const isAuthenticated = localStorage.getItem('admin_authenticated') === 'true';
+    
+    if (!isAuthenticated) {
       navigate('/admin/login');
       return;
     }
 
-    // Check if user is admin
-    const { data: adminCheck } = await supabase.rpc('has_role', {
-      _user_id: session.user.id,
-      _role: 'admin',
-    });
-
-    if (adminCheck) {
-      setIsAdmin(true);
-      // Admin has all permissions
-      setUserPermissions({
-        can_manage_orders: true,
-        can_manage_products: true,
-        can_manage_tokens: true,
-        can_manage_refunds: true,
-        can_manage_stock: true,
-        can_manage_coupons: true,
-      });
-      setActiveTab('orders');
-      setIsLoading(false);
-      return;
-    }
-
-    // Check if user has any permissions
-    const { data: permissions, error: permError } = await supabase
-      .from('user_permissions')
-      .select('*')
-      .eq('user_id', session.user.id)
-      .maybeSingle();
-
-    console.log('Permissions check:', { permissions, permError, userId: session.user.id });
-
-    const hasAnyPermission = permissions && (
-      (permissions as any).can_manage_orders ||
-      (permissions as any).can_manage_products ||
-      (permissions as any).can_manage_tokens ||
-      (permissions as any).can_manage_refunds ||
-      (permissions as any).can_manage_stock ||
-      (permissions as any).can_manage_coupons
-    );
-
-    if (!hasAnyPermission) {
-      await supabase.auth.signOut();
-      navigate('/admin/login');
-      return;
-    }
-
-    // Store permissions
+    // المستخدم المحلي له كل الصلاحيات
+    setIsAdmin(true);
     setUserPermissions({
-      can_manage_orders: (permissions as any).can_manage_orders || false,
-      can_manage_products: (permissions as any).can_manage_products || false,
-      can_manage_tokens: (permissions as any).can_manage_tokens || false,
-      can_manage_refunds: (permissions as any).can_manage_refunds || false,
-      can_manage_stock: (permissions as any).can_manage_stock || false,
-      can_manage_coupons: (permissions as any).can_manage_coupons || false,
+      can_manage_orders: true,
+      can_manage_products: true,
+      can_manage_tokens: true,
+      can_manage_refunds: true,
+      can_manage_stock: true,
+      can_manage_coupons: true,
     });
-
-    // Set default tab based on permissions
-    if ((permissions as any).can_manage_orders) setActiveTab('orders');
-    else if ((permissions as any).can_manage_products) setActiveTab('products');
-    else if ((permissions as any).can_manage_tokens) setActiveTab('tokens');
-    else if ((permissions as any).can_manage_refunds) setActiveTab('refunds');
-    else if ((permissions as any).can_manage_coupons) setActiveTab('coupons');
-
+    setActiveTab('orders');
     setIsLoading(false);
   };
 
@@ -1429,8 +1379,9 @@ const Admin = () => {
                 <span className="hidden sm:inline">{notificationsEnabled ? 'الإشعارات' : 'صامت'}</span>
               </button>
               <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
+                onClick={() => {
+                  localStorage.removeItem('admin_authenticated');
+                  localStorage.removeItem('admin_login_time');
                   navigate('/admin/login');
                 }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
