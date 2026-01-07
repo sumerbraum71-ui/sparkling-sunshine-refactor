@@ -4,6 +4,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+const ALLOWED_ADMIN_EMAIL = 'mr.work78907890@gmail.com';
+
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +23,7 @@ const AdminAuth = () => {
       const { count } = await supabase
         .from('admin_auth')
         .select('*', { count: 'exact', head: true });
-      
+
       setHasExistingAdmin((count || 0) > 0);
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -32,14 +34,14 @@ const AdminAuth = () => {
           .select('*')
           .eq('user_id', session.user.id)
           .maybeSingle();
-        
+
         if (adminData) {
           navigate('/admin');
         }
       }
       setCheckingSession(false);
     };
-    
+
     checkSession();
 
     // Listen for auth changes
@@ -50,7 +52,7 @@ const AdminAuth = () => {
           .select('*')
           .eq('user_id', session.user.id)
           .maybeSingle();
-        
+
         if (adminData) {
           navigate('/admin');
         }
@@ -112,8 +114,18 @@ const AdminAuth = () => {
     setIsLoading(true);
 
     try {
+      // ✅ قفل إنشاء الأدمن على إيميل واحد فقط
+      if (email.trim().toLowerCase() !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
+        toast({
+          title: 'غير مسموح',
+          description: 'إنشاء حساب الأدمن مسموح للبريد الخاص بالمسؤول فقط',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       const redirectUrl = `${window.location.origin}/admin`;
-      
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
