@@ -186,9 +186,11 @@ export type Database = {
           id: string
           instructions: string | null
           is_active: boolean
+          is_visible: boolean | null
           name: string
           sort_order: number | null
           type: string | null
+          updated_at: string | null
         }
         Insert: {
           account_info: string
@@ -199,9 +201,11 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_active?: boolean
+          is_visible?: boolean | null
           name: string
           sort_order?: number | null
           type?: string | null
+          updated_at?: string | null
         }
         Update: {
           account_info?: string
@@ -212,9 +216,11 @@ export type Database = {
           id?: string
           instructions?: string | null
           is_active?: boolean
+          is_visible?: boolean | null
           name?: string
           sort_order?: number | null
           type?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -332,9 +338,13 @@ export type Database = {
           payment_method: string | null
           payment_method_id: string | null
           payment_proof: string | null
+          processed_at: string | null
           proof_image_url: string | null
+          sender_name: string | null
+          sender_phone: string | null
           status: string
           token_id: string
+          transaction_reference: string | null
           updated_at: string
         }
         Insert: {
@@ -346,9 +356,13 @@ export type Database = {
           payment_method?: string | null
           payment_method_id?: string | null
           payment_proof?: string | null
+          processed_at?: string | null
           proof_image_url?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
           status?: string
           token_id: string
+          transaction_reference?: string | null
           updated_at?: string
         }
         Update: {
@@ -360,9 +374,13 @@ export type Database = {
           payment_method?: string | null
           payment_method_id?: string | null
           payment_proof?: string | null
+          processed_at?: string | null
           proof_image_url?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
           status?: string
           token_id?: string
+          transaction_reference?: string | null
           updated_at?: string
         }
         Relationships: [
