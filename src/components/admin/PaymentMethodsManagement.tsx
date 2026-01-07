@@ -264,4 +264,5 @@ const PaymentMethodsManagement = () => {
   );
 };
 
+export { PaymentMethodsManagement };
 export default PaymentMethodsManagement;

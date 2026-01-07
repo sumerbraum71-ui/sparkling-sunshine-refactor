@@ -1,163 +1,144 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { Loader2, Lock, Mail } from "lucide-react";
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 const AdminAuth = () => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    checkExistingSession();
-  }, []);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
 
-  const checkExistingSession = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (roles && roles.some(r => r.role === "admin")) {
-        navigate("/admin");
+      if (error) throw error;
+
+      const userId = data.user?.id;
+      if (!userId) {
+        throw new Error('تعذر تسجيل الدخول، حاول مرة أخرى');
       }
+
+      // بعد تسجيل الدخول مباشرةً، اذهب للوحة الأدمن
+      // (التحقق من الصلاحيات يتم داخل صفحة /admin)
+      toast({
+        title: 'نجاح',
+        description: 'تم تسجيل الدخول بنجاح',
+      });
+      navigate('/admin');
+    } catch (error: any) {
+      toast({
+        title: 'خطأ',
+        description: error.message || 'فشل تسجيل الدخول',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
 
     try {
-      if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/admin-auth`,
+        },
+      });
 
-        if (error) throw error;
+      if (error) throw error;
 
-        if (data.user) {
-          const { data: roles } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", data.user.id);
-
-          if (!roles || roles.length === 0 || !roles.some(r => r.role === "admin")) {
-            await supabase.auth.signOut();
-            toast.error("ليس لديك صلاحية الوصول للوحة التحكم");
-            setLoading(false);
-            return;
-          }
-
-          toast.success("تم تسجيل الدخول بنجاح");
-          navigate("/admin");
-        }
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/admin`,
-          },
-        });
-
-        if (error) throw error;
-
-        toast.success("تم إنشاء الحساب بنجاح. يرجى تأكيد البريد الإلكتروني");
-      }
+      toast({
+        title: 'نجاح',
+        description: 'تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول',
+      });
+      setIsSignUp(false);
     } catch (error: any) {
-      if (error.message.includes("Invalid login credentials")) {
-        toast.error("البريد الإلكتروني أو كلمة المرور غير صحيحة");
-      } else if (error.message.includes("User already registered")) {
-        toast.error("هذا البريد الإلكتروني مسجل مسبقاً");
-      } else {
-        toast.error(error.message || "حدث خطأ");
-      }
+      toast({
+        title: 'خطأ',
+        description: error.message || 'فشل إنشاء الحساب',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 font-cairo">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold text-primary">
-            {isLogin ? "تسجيل الدخول" : "إنشاء حساب"}
-          </CardTitle>
-          <p className="text-muted-foreground">لوحة تحكم BOOMPAY</p>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">البريد الإلكتروني</Label>
-              <div className="relative">
-                <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@example.com"
-                  className="pr-10"
-                  dir="ltr"
-                  required
-                />
-              </div>
-            </div>
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="card-simple p-8 w-full max-w-md">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold">
+            <span className="text-primary">BOOM</span>
+            <span className="text-foreground">PAY</span>
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            {isSignUp ? 'إنشاء حساب جديد' : 'لوحة تحكم المسؤول'}
+          </p>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">كلمة المرور</Label>
-              <div className="relative">
-                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="pr-10"
-                  dir="ltr"
-                  required
-                  minLength={6}
-                />
-              </div>
-            </div>
+        <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">البريد الإلكتروني</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input-field w-full"
+              placeholder="admin@example.com"
+              required
+            />
+          </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
-                  جاري المعالجة...
-                </>
-              ) : isLogin ? (
-                "تسجيل الدخول"
-              ) : (
-                "إنشاء حساب"
-              )}
-            </Button>
+          <div>
+            <label className="block text-sm font-medium mb-2">كلمة المرور</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input-field w-full"
+              placeholder="••••••••"
+              required
+              minLength={6}
+            />
+          </div>
 
-            <Button
-              type="button"
-              variant="ghost"
-              className="w-full"
-              onClick={() => setIsLogin(!isLogin)}
-            >
-              {isLogin ? "ليس لديك حساب؟ أنشئ حساباً" : "لديك حساب؟ سجل الدخول"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+          >
+            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isLoading 
+              ? (isSignUp ? 'جاري إنشاء الحساب...' : 'جاري تسجيل الدخول...') 
+              : (isSignUp ? 'إنشاء حساب' : 'تسجيل الدخول')}
+          </button>
+        </form>
+
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-primary hover:underline text-sm"
+          >
+            {isSignUp ? 'لديك حساب؟ تسجيل الدخول' : 'ليس لديك حساب؟ إنشاء حساب جديد'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
