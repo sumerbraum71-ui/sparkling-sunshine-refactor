@@ -12,7 +12,6 @@ const AdminAuth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasExistingAdmin, setHasExistingAdmin] = useState(true);
-  
   // Security Gate State
   const [isAccessGranted, setIsAccessGranted] = useState(() => {
     return localStorage.getItem('boom_admin_access') === 'granted';
@@ -22,7 +21,6 @@ const AdminAuth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   useEffect(() => {
-    // If no access granted yet, don't check session (stay on gate)
     if (!isAccessGranted) {
       setCheckingSession(false);
       return;
@@ -40,7 +38,7 @@ const AdminAuth = () => {
           .eq('user_id', session.user.id)
           .maybeSingle();
         if (adminData) {
-          navigate('/admin');
+          navigate('/BOOM');
         }
       }
       setCheckingSession(false);
@@ -54,7 +52,7 @@ const AdminAuth = () => {
           .eq('user_id', session.user.id)
           .maybeSingle();
         if (adminData) {
-          navigate('/admin');
+          navigate('/BOOM');
         }
       }
     });
@@ -70,7 +68,6 @@ const AdminAuth = () => {
         title: 'تم التحقق بنجاح',
         description: 'مرحباً بك في لوحة التحكم',
       });
-      // Trigger session check manually after access grant
       setCheckingSession(true);
     } else {
       setAccessError(true);
@@ -109,7 +106,7 @@ const AdminAuth = () => {
           title: 'نجاح',
           description: 'تم تسجيل الدخول بنجاح',
         });
-        navigate('/admin');
+        navigate('/BOOM');
       }
     } catch (error: any) {
       toast({
@@ -133,7 +130,7 @@ const AdminAuth = () => {
         });
         return;
       }
-      const redirectUrl = `${window.location.origin}/admin`;
+      const redirectUrl = `${window.location.origin}/BOOM`;
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -190,7 +187,6 @@ const AdminAuth = () => {
       </div>
     );
   }
-  // Security Gate UI
   if (!isAccessGranted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -229,7 +225,6 @@ const AdminAuth = () => {
       </div>
     );
   }
-  // Normal Login UI
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="card-simple p-8 w-full max-w-md animate-in slide-in-from-bottom-4 duration-500">
