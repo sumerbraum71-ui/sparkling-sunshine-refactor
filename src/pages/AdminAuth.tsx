@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
-// بيانات الدخول الثابتة
-const ADMIN_CREDENTIALS = {
+// بيانات الأدمن الرئيسي الثابتة
+const SUPER_ADMIN = {
   username: 'boom',
   password: '100900'
 };
@@ -20,28 +21,74 @@ const AdminAuth = () => {
     e.preventDefault();
     setIsLoading(true);
 
-    // تأخير بسيط لمحاكاة عملية تسجيل الدخول
-    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      // التحقق من الأدمن الرئيسي أولاً
+      if (username === SUPER_ADMIN.username && password === SUPER_ADMIN.password) {
+        localStorage.setItem('admin_authenticated', 'true');
+        localStorage.setItem('admin_username', username);
+        localStorage.setItem('admin_is_super', 'true');
+        localStorage.setItem('admin_login_time', Date.now().toString());
+        
+        toast({
+          title: 'نجاح',
+          description: 'تم تسجيل الدخول كأدمن رئيسي',
+        });
+        navigate('/admin');
+        return;
+      }
 
-    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-      // حفظ حالة تسجيل الدخول في localStorage
-      localStorage.setItem('admin_authenticated', 'true');
-      localStorage.setItem('admin_login_time', Date.now().toString());
-      
-      toast({
-        title: 'نجاح',
-        description: 'تم تسجيل الدخول بنجاح',
-      });
-      navigate('/admin');
-    } else {
+      // التحقق من المستخدمين المسجلين في قاعدة البيانات
+      const { data: adminUser, error } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('username', username)
+        .eq('password', password)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (adminUser) {
+        localStorage.setItem('admin_authenticated', 'true');
+        localStorage.setItem('admin_username', username);
+        localStorage.setItem('admin_is_super', 'false');
+        localStorage.setItem('admin_user_id', adminUser.id);
+        localStorage.setItem('admin_permissions', JSON.stringify({
+          can_manage_orders: adminUser.can_manage_orders,
+          can_manage_products: adminUser.can_manage_products,
+          can_manage_tokens: adminUser.can_manage_tokens,
+          can_manage_refunds: adminUser.can_manage_refunds,
+          can_manage_stock: adminUser.can_manage_stock,
+          can_manage_coupons: adminUser.can_manage_coupons,
+          can_manage_recharges: adminUser.can_manage_recharges,
+          can_manage_payment_methods: adminUser.can_manage_payment_methods,
+          can_manage_users: adminUser.can_manage_users,
+        }));
+        localStorage.setItem('admin_login_time', Date.now().toString());
+        
+        toast({
+          title: 'نجاح',
+          description: 'تم تسجيل الدخول بنجاح',
+        });
+        navigate('/admin');
+        return;
+      }
+
+      // لم يتم العثور على المستخدم
       toast({
         title: 'خطأ',
         description: 'اسم المستخدم أو كلمة المرور غير صحيحة',
         variant: 'destructive',
       });
+    } catch (error: any) {
+      toast({
+        title: 'خطأ',
+        description: error.message || 'فشل تسجيل الدخول',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
   };
 
   return (
@@ -63,7 +110,7 @@ const AdminAuth = () => {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="input-field w-full"
-              placeholder="admin"
+              placeholder="اسم المستخدم"
               required
             />
           </div>

@@ -13,6 +13,7 @@ import UserManagement from '@/components/admin/UserManagement';
 import CouponManagement from '@/components/admin/CouponManagement';
 import { RechargeManagement } from '@/components/admin/RechargeManagement';
 import { PaymentMethodsManagement } from '@/components/admin/PaymentMethodsManagement';
+import AdminUsersManagement from '@/components/admin/AdminUsersManagement';
 
 interface Product {
   id: string;
@@ -684,10 +685,11 @@ interface UserPermissions {
   can_manage_refunds: boolean;
   can_manage_stock: boolean;
   can_manage_coupons: boolean;
+  can_manage_users: boolean;
 }
 
 const Admin = () => {
-  const [activeTab, setActiveTab] = useState<'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods'>('orders');
+  const [activeTab, setActiveTab] = useState<'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users'>('orders');
   const [products, setProducts] = useState<Product[]>([]);
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -839,17 +841,45 @@ const Admin = () => {
       return;
     }
 
-    // المستخدم المحلي له كل الصلاحيات
-    setIsAdmin(true);
-    setUserPermissions({
-      can_manage_orders: true,
-      can_manage_products: true,
-      can_manage_tokens: true,
-      can_manage_refunds: true,
-      can_manage_stock: true,
-      can_manage_coupons: true,
-    });
-    setActiveTab('orders');
+    const isSuperAdmin = localStorage.getItem('admin_is_super') === 'true';
+    
+    if (isSuperAdmin) {
+      // الأدمن الرئيسي له كل الصلاحيات
+      setIsAdmin(true);
+      setUserPermissions({
+        can_manage_orders: true,
+        can_manage_products: true,
+        can_manage_tokens: true,
+        can_manage_refunds: true,
+        can_manage_stock: true,
+        can_manage_coupons: true,
+        can_manage_users: true,
+      });
+      setActiveTab('orders');
+    } else {
+      // مستخدم عادي - قراءة الصلاحيات من localStorage
+      const storedPermissions = localStorage.getItem('admin_permissions');
+      if (storedPermissions) {
+        const permissions = JSON.parse(storedPermissions);
+        setUserPermissions({
+          can_manage_orders: permissions.can_manage_orders || false,
+          can_manage_products: permissions.can_manage_products || false,
+          can_manage_tokens: permissions.can_manage_tokens || permissions.can_manage_recharges || permissions.can_manage_payment_methods || false,
+          can_manage_refunds: permissions.can_manage_refunds || false,
+          can_manage_stock: permissions.can_manage_stock || false,
+          can_manage_coupons: permissions.can_manage_coupons || false,
+          can_manage_users: permissions.can_manage_users || false,
+        });
+        
+        // تحديد التاب الافتراضي بناءً على الصلاحيات
+        if (permissions.can_manage_orders) setActiveTab('orders');
+        else if (permissions.can_manage_products) setActiveTab('products');
+        else if (permissions.can_manage_tokens) setActiveTab('tokens');
+        else if (permissions.can_manage_refunds) setActiveTab('refunds');
+        else if (permissions.can_manage_coupons) setActiveTab('coupons');
+      }
+    }
+    
     setIsLoading(false);
   };
 
@@ -1405,13 +1435,14 @@ const Admin = () => {
             { id: 'refunds', label: 'الاستردادات', icon: RotateCcw, count: refundRequests.filter(r => r.status === 'pending').length, permission: 'can_manage_refunds' },
             { id: 'payment_methods', label: 'طرق الدفع', icon: Wallet, count: null, permission: 'can_manage_tokens' },
             { id: 'coupons', label: 'الكوبونات', icon: Ticket, count: null, permission: 'can_manage_coupons' },
-            { id: 'users', label: 'المستخدمين', icon: Shield, count: null, permission: 'can_manage_stock' },
+            { id: 'users', label: 'المستخدمين', icon: Shield, count: null, permission: 'can_manage_users' },
+            { id: 'admin_users', label: 'مدراء النظام', icon: Users, count: null, permission: 'can_manage_users' },
           ].filter(tab => isAdmin || (userPermissions && userPermissions[tab.permission as keyof UserPermissions])).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods')}
+                onClick={() => setActiveTab(tab.id as 'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users')}
                 className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
@@ -2225,6 +2256,9 @@ const Admin = () => {
 
       {/* Payment Methods Tab */}
       {activeTab === 'payment_methods' && <PaymentMethodsManagement />}
+
+      {/* Admin Users Tab */}
+      {activeTab === 'admin_users' && <AdminUsersManagement />}
     </div>
   );
 };
