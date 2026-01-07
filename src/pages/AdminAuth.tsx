@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 
-// بيانات الدخول الثابتة - يمكنك تغييرها حسب رغبتك
+// بيانات الدخول الثابتة
 const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123'
+  username: 'boom',
+  password: '100900'
 };
 
 const AdminAuth = () => {
