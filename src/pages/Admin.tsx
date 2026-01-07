@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import useOrderNotification from '@/hooks/useOrderNotification';
+import useAdminAuth from '@/hooks/useAdminAuth';
 import OrderChat from '@/components/OrderChat';
 
 import CouponManagement from '@/components/admin/CouponManagement';
@@ -834,52 +835,44 @@ const Admin = () => {
   }, [activeTab, isLoading]);
 
   const checkAuth = async () => {
-    // التحقق من تسجيل الدخول المحلي
-    const isAuthenticated = localStorage.getItem('admin_authenticated') === 'true';
+    // استخدام Supabase Auth للتحقق
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (!isAuthenticated) {
+    if (!session) {
       navigate('/admin/login');
       return;
     }
 
-    const isSuperAdmin = localStorage.getItem('admin_is_super') === 'true';
-    
-    if (isSuperAdmin) {
-      // الأدمن الرئيسي له كل الصلاحيات
-      setIsAdmin(true);
-      setUserPermissions({
-        can_manage_orders: true,
-        can_manage_products: true,
-        can_manage_tokens: true,
-        can_manage_refunds: true,
-        can_manage_stock: true,
-        can_manage_coupons: true,
-        can_manage_users: true,
-      });
-      setActiveTab('orders');
-    } else {
-      // مستخدم عادي - قراءة الصلاحيات من localStorage
-      const storedPermissions = localStorage.getItem('admin_permissions');
-      if (storedPermissions) {
-        const permissions = JSON.parse(storedPermissions);
-        setUserPermissions({
-          can_manage_orders: permissions.can_manage_orders || false,
-          can_manage_products: permissions.can_manage_products || false,
-          can_manage_tokens: permissions.can_manage_tokens || permissions.can_manage_recharges || permissions.can_manage_payment_methods || false,
-          can_manage_refunds: permissions.can_manage_refunds || false,
-          can_manage_stock: permissions.can_manage_stock || false,
-          can_manage_coupons: permissions.can_manage_coupons || false,
-          can_manage_users: permissions.can_manage_users || false,
-        });
-        
-        // تحديد التاب الافتراضي بناءً على الصلاحيات
-        if (permissions.can_manage_orders) setActiveTab('orders');
-        else if (permissions.can_manage_products) setActiveTab('products');
-        else if (permissions.can_manage_tokens) setActiveTab('tokens');
-        else if (permissions.can_manage_refunds) setActiveTab('refunds');
-        else if (permissions.can_manage_coupons) setActiveTab('coupons');
-      }
+    // التحقق من صلاحيات الأدمن
+    const { data: adminData, error } = await supabase
+      .from('admin_auth')
+      .select('*')
+      .eq('user_id', session.user.id)
+      .maybeSingle();
+
+    if (error || !adminData) {
+      await supabase.auth.signOut();
+      navigate('/admin/login');
+      return;
     }
+
+    setIsAdmin(true);
+    setUserPermissions({
+      can_manage_orders: adminData.can_manage_orders || adminData.is_super_admin,
+      can_manage_products: adminData.can_manage_products || adminData.is_super_admin,
+      can_manage_tokens: adminData.can_manage_tokens || adminData.is_super_admin,
+      can_manage_refunds: adminData.can_manage_refunds || adminData.is_super_admin,
+      can_manage_stock: adminData.can_manage_stock || adminData.is_super_admin,
+      can_manage_coupons: adminData.can_manage_coupons || adminData.is_super_admin,
+      can_manage_users: adminData.can_manage_users || adminData.is_super_admin,
+    });
+    
+    // تحديد التاب الافتراضي
+    if (adminData.can_manage_orders || adminData.is_super_admin) setActiveTab('orders');
+    else if (adminData.can_manage_products) setActiveTab('products');
+    else if (adminData.can_manage_tokens) setActiveTab('tokens');
+    else if (adminData.can_manage_refunds) setActiveTab('refunds');
+    else if (adminData.can_manage_coupons) setActiveTab('coupons');
     
     setIsLoading(false);
   };
@@ -1410,9 +1403,8 @@ const Admin = () => {
                 <span className="hidden sm:inline">{notificationsEnabled ? 'الإشعارات' : 'صامت'}</span>
               </button>
               <button
-                onClick={() => {
-                  localStorage.removeItem('admin_authenticated');
-                  localStorage.removeItem('admin_login_time');
+                onClick={async () => {
+                  await supabase.auth.signOut();
                   navigate('/admin/login');
                 }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"

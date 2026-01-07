@@ -1,85 +1,93 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
-// بيانات الأدمن الرئيسي الثابتة
-const SUPER_ADMIN = {
-  username: 'boom',
-  password: '100900'
-};
-
 const AdminAuth = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    // Check if already logged in
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        // Check if user is admin
+        const { data: adminData } = await supabase
+          .from('admin_auth')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        if (adminData) {
+          navigate('/admin');
+        }
+      }
+      setCheckingSession(false);
+    };
+    
+    checkSession();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const { data: adminData } = await supabase
+          .from('admin_auth')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+        
+        if (adminData) {
+          navigate('/admin');
+        }
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // التحقق من الأدمن الرئيسي أولاً
-      if (username === SUPER_ADMIN.username && password === SUPER_ADMIN.password) {
-        localStorage.setItem('admin_authenticated', 'true');
-        localStorage.setItem('admin_username', username);
-        localStorage.setItem('admin_is_super', 'true');
-        localStorage.setItem('admin_login_time', Date.now().toString());
-        
-        toast({
-          title: 'نجاح',
-          description: 'تم تسجيل الدخول كأدمن رئيسي',
-        });
-        navigate('/admin');
-        return;
-      }
-
-      // التحقق من المستخدمين المسجلين في قاعدة البيانات
-      const { data: adminUser, error } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('username', username)
-        .eq('password', password)
-        .eq('is_active', true)
-        .maybeSingle();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
       if (error) throw error;
 
-      if (adminUser) {
-        localStorage.setItem('admin_authenticated', 'true');
-        localStorage.setItem('admin_username', username);
-        localStorage.setItem('admin_is_super', 'false');
-        localStorage.setItem('admin_user_id', adminUser.id);
-        localStorage.setItem('admin_permissions', JSON.stringify({
-          can_manage_orders: adminUser.can_manage_orders,
-          can_manage_products: adminUser.can_manage_products,
-          can_manage_tokens: adminUser.can_manage_tokens,
-          can_manage_refunds: adminUser.can_manage_refunds,
-          can_manage_stock: adminUser.can_manage_stock,
-          can_manage_coupons: adminUser.can_manage_coupons,
-          can_manage_recharges: adminUser.can_manage_recharges,
-          can_manage_payment_methods: adminUser.can_manage_payment_methods,
-          can_manage_users: adminUser.can_manage_users,
-        }));
-        localStorage.setItem('admin_login_time', Date.now().toString());
-        
+      if (data.user) {
+        // Check if user is admin
+        const { data: adminData, error: adminError } = await supabase
+          .from('admin_auth')
+          .select('*')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
+
+        if (adminError || !adminData) {
+          await supabase.auth.signOut();
+          toast({
+            title: 'خطأ',
+            description: 'هذا الحساب ليس لديه صلاحيات أدمن',
+            variant: 'destructive',
+          });
+          return;
+        }
+
         toast({
           title: 'نجاح',
           description: 'تم تسجيل الدخول بنجاح',
         });
         navigate('/admin');
-        return;
       }
-
-      // لم يتم العثور على المستخدم
-      toast({
-        title: 'خطأ',
-        description: 'اسم المستخدم أو كلمة المرور غير صحيحة',
-        variant: 'destructive',
-      });
     } catch (error: any) {
       toast({
         title: 'خطأ',
@@ -91,6 +99,76 @@ const AdminAuth = () => {
     }
   };
 
+  const handleSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    try {
+      const redirectUrl = `${window.location.origin}/admin`;
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+        // Create admin_auth entry with super admin permissions (first user)
+        const { error: insertError } = await supabase
+          .from('admin_auth')
+          .insert({
+            user_id: data.user.id,
+            is_super_admin: true,
+            can_manage_orders: true,
+            can_manage_products: true,
+            can_manage_tokens: true,
+            can_manage_refunds: true,
+            can_manage_stock: true,
+            can_manage_coupons: true,
+            can_manage_recharges: true,
+            can_manage_payment_methods: true,
+            can_manage_users: true,
+          });
+
+        if (insertError) {
+          console.error('Error creating admin:', insertError);
+          toast({
+            title: 'تحذير',
+            description: 'تم إنشاء الحساب لكن فشل إضافة صلاحيات الأدمن',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        toast({
+          title: 'نجاح',
+          description: 'تم إنشاء حساب الأدمن بنجاح! يمكنك الآن تسجيل الدخول',
+        });
+        setIsSignUp(false);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'خطأ',
+        description: error.message || 'فشل إنشاء الحساب',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="card-simple p-8 w-full max-w-md">
@@ -99,32 +177,42 @@ const AdminAuth = () => {
             <span className="text-primary">BOOM</span>
             <span className="text-foreground">PAY</span>
           </h1>
-          <p className="text-muted-foreground mt-2">لوحة تحكم المسؤول</p>
+          <p className="text-muted-foreground mt-2">
+            {isSignUp ? 'إنشاء حساب أدمن جديد' : 'لوحة تحكم المسؤول'}
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
+        <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">اسم المستخدم</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="input-field w-full"
-              placeholder="اسم المستخدم"
-              required
-            />
+            <label className="block text-sm font-medium mb-2">البريد الإلكتروني</label>
+            <div className="relative">
+              <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="input-field w-full pr-10"
+                placeholder="admin@example.com"
+                required
+                dir="ltr"
+              />
+            </div>
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-2">كلمة المرور</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field w-full"
-              placeholder="••••••••"
-              required
-            />
+            <div className="relative">
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field w-full pr-10"
+                placeholder="••••••••"
+                required
+                minLength={6}
+              />
+            </div>
           </div>
 
           <button
@@ -132,10 +220,31 @@ const AdminAuth = () => {
             disabled={isLoading}
             className="btn-primary w-full py-3 flex items-center justify-center gap-2"
           >
-            {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isLoading ? 'جاري تسجيل الدخول...' : 'تسجيل الدخول'}
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isSignUp ? (
+              <UserPlus className="w-4 h-4" />
+            ) : (
+              <LogIn className="w-4 h-4" />
+            )}
+            {isLoading ? 'جاري المعالجة...' : isSignUp ? 'إنشاء حساب' : 'تسجيل الدخول'}
           </button>
         </form>
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-sm text-primary hover:underline"
+          >
+            {isSignUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب أدمن جديد'}
+          </button>
+        </div>
+
+        <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+          <p className="text-xs text-muted-foreground text-center">
+            🔒 هذه الصفحة محمية بنظام Supabase Auth
+          </p>
+        </div>
       </div>
     </div>
   );
