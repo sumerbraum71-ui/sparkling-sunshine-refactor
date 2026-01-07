@@ -10,12 +10,20 @@ const AdminAuth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [hasExistingAdmin, setHasExistingAdmin] = useState(true); // افتراضياً فيه أدمن
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    // Check if already logged in
+    // Check if already logged in and if there are existing admins
     const checkSession = async () => {
+      // Check if any admin exists
+      const { count } = await supabase
+        .from('admin_auth')
+        .select('*', { count: 'exact', head: true });
+      
+      setHasExistingAdmin((count || 0) > 0);
+
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         // Check if user is admin
@@ -231,14 +239,17 @@ const AdminAuth = () => {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-sm text-primary hover:underline"
-          >
-            {isSignUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب أدمن جديد'}
-          </button>
-        </div>
+        {/* إظهار خيار التسجيل فقط إذا لم يكن هناك أي أدمن */}
+        {!hasExistingAdmin && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-sm text-primary hover:underline"
+            >
+              {isSignUp ? 'لديك حساب؟ تسجيل الدخول' : 'إنشاء حساب أدمن جديد'}
+            </button>
+          </div>
+        )}
 
         <div className="mt-4 p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground text-center">
