@@ -130,4 +130,17 @@
   .font-cairo {
     font-family: 'Cairo', sans-serif;
   }
+
+  @keyframes scanline {
+    0% {
+      transform: translateY(-100%);
+    }
+    100% {
+      transform: translateY(100%);
+    }
+  }
+
+  .animate-scanline {
+    animation: scanline 3s linear infinite;
+  }
 }

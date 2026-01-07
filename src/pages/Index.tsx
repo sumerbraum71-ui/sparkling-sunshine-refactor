@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
+import NewsSection from '@/components/NewsSection';
 import { supabase } from '@/integrations/supabase/client';
 import { ShoppingCart, Search, CheckCircle, AlertCircle, Loader2, Clock, XCircle, CheckCircle2, Copy, MessageCircle, Ticket, Ban, CreditCard } from 'lucide-react';
 import {
@@ -1489,6 +1490,9 @@ const Index = () => {
             )}
           </div>
         </div>
+
+        {/* News Section */}
+        <NewsSection />
       </main>
     </div>
   );

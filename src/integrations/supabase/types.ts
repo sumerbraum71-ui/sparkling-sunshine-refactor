@@ -107,6 +107,33 @@ export type Database = {
         }
         Relationships: []
       }
+      news: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_active: boolean
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       order_messages: {
         Row: {
           created_at: string

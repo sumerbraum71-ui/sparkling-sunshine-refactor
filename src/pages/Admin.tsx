@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Package, Key, ShoppingBag, LogOut, Plus, Trash2, Edit2, Save, X,
   ChevronDown, ChevronUp, Settings, Copy, Eye, EyeOff, Clock, CheckCircle2,
-  XCircle, Loader2, LayoutGrid, Zap, Database, Bell, BellOff, TrendingUp, DollarSign, Users, MessageCircle, Link, RotateCcw, Ban, Ticket, Shield, CreditCard, Wallet
+  XCircle, Loader2, LayoutGrid, Zap, Database, Bell, BellOff, TrendingUp, DollarSign, Users, MessageCircle, Link, RotateCcw, Ban, Ticket, Shield, CreditCard, Wallet, Newspaper
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import useOrderNotification from '@/hooks/useOrderNotification';
@@ -14,6 +14,7 @@ import CouponManagement from '@/components/admin/CouponManagement';
 import { RechargeManagement } from '@/components/admin/RechargeManagement';
 import { PaymentMethodsManagement } from '@/components/admin/PaymentMethodsManagement';
 import AdminUsersManagement from '@/components/admin/AdminUsersManagement';
+import NewsManagement from '@/components/admin/NewsManagement';
 
 interface Product {
   id: string;
@@ -689,7 +690,7 @@ interface UserPermissions {
 }
 
 const Admin = () => {
-  const [activeTab, setActiveTab] = useState<'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users'>('orders');
+  const [activeTab, setActiveTab] = useState<'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users' | 'news'>('orders');
   const [products, setProducts] = useState<Product[]>([]);
   const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
@@ -1435,13 +1436,14 @@ const Admin = () => {
             { id: 'refunds', label: 'الاستردادات', icon: RotateCcw, count: refundRequests.filter(r => r.status === 'pending').length, permission: 'can_manage_refunds' },
             { id: 'payment_methods', label: 'طرق الدفع', icon: Wallet, count: null, permission: 'can_manage_tokens' },
             { id: 'coupons', label: 'الكوبونات', icon: Ticket, count: null, permission: 'can_manage_coupons' },
+            { id: 'news', label: 'الأخبار', icon: Newspaper, count: null, permission: 'can_manage_products' },
             { id: 'admin_users', label: 'مدراء النظام', icon: Users, count: null, permission: 'can_manage_users' },
           ].filter(tab => isAdmin || (userPermissions && userPermissions[tab.permission as keyof UserPermissions])).map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users')}
+                onClick={() => setActiveTab(tab.id as 'products' | 'tokens' | 'orders' | 'refunds' | 'users' | 'coupons' | 'recharges' | 'payment_methods' | 'admin_users' | 'news')}
                 className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all whitespace-nowrap ${
                   activeTab === tab.id
                     ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
@@ -2256,6 +2258,9 @@ const Admin = () => {
 
       {/* Admin Users Tab */}
       {activeTab === 'admin_users' && <AdminUsersManagement />}
+
+      {/* News Tab */}
+      {activeTab === 'news' && <NewsManagement />}
     </div>
   );
 };
