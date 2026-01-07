@@ -9,7 +9,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import useOrderNotification from '@/hooks/useOrderNotification';
 import OrderChat from '@/components/OrderChat';
-import UserManagement from '@/components/admin/UserManagement';
+
 import CouponManagement from '@/components/admin/CouponManagement';
 import { RechargeManagement } from '@/components/admin/RechargeManagement';
 import { PaymentMethodsManagement } from '@/components/admin/PaymentMethodsManagement';
@@ -1435,7 +1435,6 @@ const Admin = () => {
             { id: 'refunds', label: 'الاستردادات', icon: RotateCcw, count: refundRequests.filter(r => r.status === 'pending').length, permission: 'can_manage_refunds' },
             { id: 'payment_methods', label: 'طرق الدفع', icon: Wallet, count: null, permission: 'can_manage_tokens' },
             { id: 'coupons', label: 'الكوبونات', icon: Ticket, count: null, permission: 'can_manage_coupons' },
-            { id: 'users', label: 'المستخدمين', icon: Shield, count: null, permission: 'can_manage_users' },
             { id: 'admin_users', label: 'مدراء النظام', icon: Users, count: null, permission: 'can_manage_users' },
           ].filter(tab => isAdmin || (userPermissions && userPermissions[tab.permission as keyof UserPermissions])).map((tab) => {
             const Icon = tab.icon;
@@ -2245,8 +2244,6 @@ const Admin = () => {
         </div>
       )}
 
-      {/* Users Tab */}
-      {activeTab === 'users' && <UserManagement />}
 
       {/* Coupons Tab */}
       {activeTab === 'coupons' && <CouponManagement />}
