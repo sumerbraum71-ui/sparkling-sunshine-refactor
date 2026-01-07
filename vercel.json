@@ -1,0 +1,5 @@
+{
+  "redirects": [
+    { "source": "/Admin", "destination": "/admin-auth", "permanent": true }
+  ]
+}
