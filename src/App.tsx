@@ -9,9 +9,7 @@ import AdminAuth from "./pages/AdminAuth";
 import FAQ from "./pages/FAQ";
 import Refund from "./pages/Refund";
 import NotFound from "./pages/NotFound";
-
 const queryClient = new QueryClient();
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -20,18 +18,17 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
-          <Route path="/admin" element={<Admin />} />
-          <Route path="/admin/auth" element={<AdminAuth />} />
-          <Route path="/admin/login" element={<AdminAuth />} />
-          <Route path="/admin-auth" element={<AdminAuth />} />
+          {/* مسار الأدمن الجديد BOOM */}
+          <Route path="/BOOM" element={<Admin />} />
+          <Route path="/BOOM/auth" element={<AdminAuth />} />
+          <Route path="/BOOM/login" element={<AdminAuth />} />
+          <Route path="/admin" element={<NotFound />} /> {/* قفل المسار القديم */}
           <Route path="/faq" element={<FAQ />} />
           <Route path="/refund" element={<Refund />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );
-
 export default App;
