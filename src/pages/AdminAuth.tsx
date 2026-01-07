@@ -3,48 +3,49 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-
 const ALLOWED_ADMIN_EMAIL = 'mr.work78907890@gmail.com';
-
+const ACCESS_CODE = 'BOOM2026'; // كود الأمان
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [hasExistingAdmin, setHasExistingAdmin] = useState(true); // افتراضياً فيه أدمن
+  const [hasExistingAdmin, setHasExistingAdmin] = useState(true);
+  
+  // Security Gate State
+  const [isAccessGranted, setIsAccessGranted] = useState(() => {
+    return localStorage.getItem('boom_admin_access') === 'granted';
+  });
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [accessError, setAccessError] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-
   useEffect(() => {
-    // Check if already logged in and if there are existing admins
+    // If no access granted yet, don't check session (stay on gate)
+    if (!isAccessGranted) {
+      setCheckingSession(false);
+      return;
+    }
     const checkSession = async () => {
-      // Check if any admin exists
       const { count } = await supabase
         .from('admin_auth')
         .select('*', { count: 'exact', head: true });
-
       setHasExistingAdmin((count || 0) > 0);
-
       const { data: { session } } = await supabase.auth.getSession();
       if (session) {
-        // Check if user is admin
         const { data: adminData } = await supabase
           .from('admin_auth')
           .select('*')
           .eq('user_id', session.user.id)
           .maybeSingle();
-
         if (adminData) {
           navigate('/admin');
         }
       }
       setCheckingSession(false);
     };
-
     checkSession();
-
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session) {
         const { data: adminData } = await supabase
@@ -52,36 +53,49 @@ const AdminAuth = () => {
           .select('*')
           .eq('user_id', session.user.id)
           .maybeSingle();
-
         if (adminData) {
           navigate('/admin');
         }
       }
     });
-
     return () => subscription.unsubscribe();
-  }, [navigate]);
-
+  }, [navigate, isAccessGranted]);
+  const handleAccessSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (accessCodeInput === ACCESS_CODE) {
+      localStorage.setItem('boom_admin_access', 'granted');
+      setIsAccessGranted(true);
+      setAccessError(false);
+      toast({
+        title: 'تم التحقق بنجاح',
+        description: 'مرحباً بك في لوحة التحكم',
+      });
+      // Trigger session check manually after access grant
+      setCheckingSession(true);
+    } else {
+      setAccessError(true);
+      toast({
+        title: 'خطأ',
+        description: 'كود الأمان غير صحيح',
+        variant: 'destructive',
+      });
+    }
+  };
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-
       if (error) throw error;
-
       if (data.user) {
-        // Check if user is admin
         const { data: adminData, error: adminError } = await supabase
           .from('admin_auth')
           .select('*')
           .eq('user_id', data.user.id)
           .maybeSingle();
-
         if (adminError || !adminData) {
           await supabase.auth.signOut();
           toast({
@@ -91,7 +105,6 @@ const AdminAuth = () => {
           });
           return;
         }
-
         toast({
           title: 'نجاح',
           description: 'تم تسجيل الدخول بنجاح',
@@ -108,13 +121,10 @@ const AdminAuth = () => {
       setIsLoading(false);
     }
   };
-
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-
     try {
-      // ✅ قفل إنشاء الأدمن على إيميل واحد فقط
       if (email.trim().toLowerCase() !== ALLOWED_ADMIN_EMAIL.toLowerCase()) {
         toast({
           title: 'غير مسموح',
@@ -123,9 +133,7 @@ const AdminAuth = () => {
         });
         return;
       }
-
       const redirectUrl = `${window.location.origin}/admin`;
-
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -133,11 +141,8 @@ const AdminAuth = () => {
           emailRedirectTo: redirectUrl
         }
       });
-
       if (error) throw error;
-
       if (data.user) {
-        // Create admin_auth entry with super admin permissions (first user)
         const { error: insertError } = await supabase
           .from('admin_auth')
           .insert({
@@ -153,7 +158,6 @@ const AdminAuth = () => {
             can_manage_payment_methods: true,
             can_manage_users: true,
           });
-
         if (insertError) {
           console.error('Error creating admin:', insertError);
           toast({
@@ -163,7 +167,6 @@ const AdminAuth = () => {
           });
           return;
         }
-
         toast({
           title: 'نجاح',
           description: 'تم إنشاء حساب الأدمن بنجاح! يمكنك الآن تسجيل الدخول',
@@ -180,7 +183,6 @@ const AdminAuth = () => {
       setIsLoading(false);
     }
   };
-
   if (checkingSession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -188,10 +190,49 @@ const AdminAuth = () => {
       </div>
     );
   }
-
+  // Security Gate UI
+  if (!isAccessGranted) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="card-simple p-8 w-full max-w-md animate-in fade-in zoom-in duration-300">
+          <div className="text-center mb-8">
+            <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold mb-2">التحقق الأمني</h1>
+            <p className="text-muted-foreground">
+              الرجاء إدخال كود الأمان للمتابعة
+            </p>
+          </div>
+          <form onSubmit={handleAccessSubmit} className="space-y-6">
+            <div className="relative">
+              <input
+                type="password"
+                value={accessCodeInput}
+                onChange={(e) => setAccessCodeInput(e.target.value)}
+                className={`input-field w-full text-center text-lg tracking-widest ${accessError ? 'border-destructive' : ''}`}
+                placeholder="أدخل الكود هنا"
+                autoFocus
+              />
+            </div>
+            <button
+              type="submit"
+              className="btn-primary w-full py-3 hover:scale-105 transition-transform"
+            >
+              تحقق ومتابعة
+            </button>
+          </form>
+          <div className="mt-8 text-center text-xs text-muted-foreground">
+            هذا الإجراء مطلوب فقط للمتصفحات الجديدة
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // Normal Login UI
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="card-simple p-8 w-full max-w-md">
+      <div className="card-simple p-8 w-full max-w-md animate-in slide-in-from-bottom-4 duration-500">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold">
             <span className="text-primary">BOOM</span>
@@ -201,7 +242,6 @@ const AdminAuth = () => {
             {isSignUp ? 'إنشاء حساب أدمن جديد' : 'لوحة تحكم المسؤول'}
           </p>
         </div>
-
         <form onSubmit={isSignUp ? handleSignUp : handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-2">البريد الإلكتروني</label>
@@ -218,7 +258,6 @@ const AdminAuth = () => {
               />
             </div>
           </div>
-
           <div>
             <label className="block text-sm font-medium mb-2">كلمة المرور</label>
             <div className="relative">
@@ -234,7 +273,6 @@ const AdminAuth = () => {
               />
             </div>
           </div>
-
           <button
             type="submit"
             disabled={isLoading}
@@ -250,8 +288,6 @@ const AdminAuth = () => {
             {isLoading ? 'جاري المعالجة...' : isSignUp ? 'إنشاء حساب' : 'تسجيل الدخول'}
           </button>
         </form>
-
-        {/* إظهار خيار التسجيل فقط إذا لم يكن هناك أي أدمن */}
         {!hasExistingAdmin && (
           <div className="mt-6 text-center">
             <button
@@ -262,7 +298,6 @@ const AdminAuth = () => {
             </button>
           </div>
         )}
-
         <div className="mt-4 p-3 bg-muted/50 rounded-lg">
           <p className="text-xs text-muted-foreground text-center">
             🔒 هذه الصفحة محمية بنظام Supabase Auth
@@ -272,5 +307,4 @@ const AdminAuth = () => {
     </div>
   );
 };
-
 export default AdminAuth;
