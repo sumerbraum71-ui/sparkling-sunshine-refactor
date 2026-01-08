@@ -1,102 +1,80 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
+import { Loader2, Mail, Lock, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-const ALLOWED_ADMIN_EMAIL = 'boom@admin';
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [hasExistingAdmin, setHasExistingAdmin] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
   useEffect(() => {
+    // Check if already logged in and matches admin_auth
     const checkSession = async () => {
-      const { count } = await supabase
-        .from('admin_auth')
-        .select('*', { count: 'exact', head: true });
-      setHasExistingAdmin((count || 0) > 0);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: adminData } = await supabase
-          .from('admin_auth')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .maybeSingle();
-        if (adminData) {
-          navigate('/BOOM');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data: adminData } = await supabase
+            .from('admin_auth')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+            
+          if (adminData) {
+            navigate('/BOOM'); // Access granted
+          }
         }
+      } catch (error) {
+        console.error('Session check error', error);
+      } finally {
+        setCheckingSession(false);
       }
-      setCheckingSession(false);
     };
     checkSession();
-    // Simplified subscription for debug
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        // Do nothing automatically, let the user click login to see errors
-      }
-    });
-    return () => subscription.unsubscribe();
   }, [navigate]);
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // 1. Authenticate user
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-        
       if (error) throw error;
-      
       if (data.user) {
-        // DEBUG: Explicitly log and show what's happening
-        console.log("User ID:", data.user.id);
-        
+        // 2. Verify admin permission
         const { data: adminData, error: adminError } = await supabase
           .from('admin_auth')
           .select('*')
           .eq('user_id', data.user.id)
           .maybeSingle();
-        console.log("Admin Data:", adminData);
-        console.log("Admin Error:", adminError);
         if (adminError || !adminData) {
-          // don't sign out immediately so we can debug
-          // await supabase.auth.signOut(); 
-          
+          await supabase.auth.signOut();
           toast({
-            title: 'DEBUG ERROR',
-            description: `User: ${data.user.id} \n Error: ${adminError?.message || 'No Data Found'} \n Code: ${adminError?.code || 'N/A'}`,
+            title: 'خطأ في الصلاحيات',
+            description: 'هذا الحساب ليس لديه صلاحيات المسؤول.',
             variant: 'destructive',
-            duration: 10000,
           });
           return;
         }
         toast({
-          title: 'نجاح',
-          description: 'تم تسجيل الدخول بنجاح',
+          title: 'تم تسجيل الدخول',
+          description: 'مرحباً بك في لوحة التحكم',
         });
         navigate('/BOOM');
       }
     } catch (error: any) {
       toast({
-        title: 'Login Error',
-        description: error.message || 'فشل تسجيل الدخول',
+        title: 'فشل تسجيل الدخول',
+        description: error.message || 'تأكد من البريد الإلكتروني وكلمة المرور',
         variant: 'destructive',
       });
     } finally {
       setIsLoading(false);
     }
-  };
-  const handleSignUp = async (e: React.FormEvent) => {
-     // Keep the same signUp logic (omitted for brevity in debug message, but you can keep the previous one if you want, 
-     // or just copy the login part mainly). 
-     // For safety, I included only the Login fix above mostly.
-     e.preventDefault();
-     // ... (Use previous logic if needed, but focus is Login now)
   };
   if (checkingSession) {
     return (
@@ -109,32 +87,60 @@ const AdminAuth = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="card-simple p-8 w-full max-w-md animate-in slide-in-from-bottom-4 duration-500">
         <div className="text-center mb-8">
-           <h1 className="text-2xl font-bold text-red-500">DEBUG MODE</h1>
+          <h1 className="text-2xl font-bold mb-2 text-primary">BOOMPAY</h1>
+          <p className="text-muted-foreground">لوحة تحكم المسؤول</p>
         </div>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Email</label>
-            <input
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">البريد الإلكتروني</label>
+            <div className="relative">
+              <Mail className="absolute right-3 top-3 h-5 w-5 text-muted-foreground" />
+              <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="input-field w-full"
-                placeholder="admin@example.com"
-            />
+                className="input-field w-full pr-10"
+                placeholder="name@example.com"
+                required
+              />
+            </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-2">Password</label>
-            <input
+          <div className="space-y-2">
+            <label className="text-sm font-medium">كلمة المرور</label>
+            <div className="relative">
+              <Lock className="absolute right-3 top-3 h-5 w-5 text-muted-foreground" />
+              <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="input-field w-full"
-            />
+                className="input-field w-full pr-10"
+                placeholder="••••••"
+                required
+              />
+            </div>
           </div>
-          <button type="submit" className="btn-primary w-full py-3">
-             {isLoading ? 'Loading...' : 'Login (Debug)'}
+          <button 
+            type="submit" 
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <LogIn className="w-5 h-5" />
+                تسجيل الدخول
+              </>
+            )}
           </button>
         </form>
+        
+        <div className="mt-6 text-center">
+           <p className="text-xs text-muted-foreground flex items-center justify-center gap-2">
+             <Lock className="w-3 h-3" />
+             منطقة آمنة ومحمية
+           </p>
+        </div>
       </div>
     </div>
   );
