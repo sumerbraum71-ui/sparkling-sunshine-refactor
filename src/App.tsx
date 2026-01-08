@@ -10,10 +10,15 @@ import FAQ from "./pages/FAQ";
 import Refund from "./pages/Refund";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
+
 const queryClient = new QueryClient();
+
 const App = () => {
   useEffect(() => {
+    // Disable right-click
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    // Disable shortcuts for DevTools and View Source
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.key === "F12" ||
@@ -24,13 +29,16 @@ const App = () => {
         e.preventDefault();
       }
     };
+
     document.addEventListener("contextmenu", handleContextMenu);
     document.addEventListener("keydown", handleKeyDown);
+
     return () => {
       document.removeEventListener("contextmenu", handleContextMenu);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -39,10 +47,11 @@ const App = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
+            {/* مسار الأدمن الجديد BOOM */}
             <Route path="/BOOM" element={<Admin />} />
             <Route path="/BOOM/auth" element={<AdminAuth />} />
             <Route path="/BOOM/login" element={<AdminAuth />} />
-            <Route path="/admin" element={<NotFound />} />
+            <Route path="/admin" element={<AdminAuth />} /> {/* Redirect old admin route */}
             <Route path="/faq" element={<FAQ />} />
             <Route path="/refund" element={<Refund />} />
             <Route path="*" element={<NotFound />} />
@@ -52,4 +61,5 @@ const App = () => {
     </QueryClientProvider>
   );
 };
+
 export default App;
