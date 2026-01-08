@@ -13,7 +13,6 @@ import { useEffect } from "react";
 const queryClient = new QueryClient();
 const App = () => {
   useEffect(() => {
-    // كود الحماية: منع كليك يمين واختصارات لوحة المفاتيح
     const handleContextMenu = (e: MouseEvent) => e.preventDefault();
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
