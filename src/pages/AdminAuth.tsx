@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Mail, Lock, UserPlus, LogIn } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-
 const ALLOWED_ADMIN_EMAIL = 'boom@admin';
-
 const AdminAuth = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +13,6 @@ const AdminAuth = () => {
   const [hasExistingAdmin, setHasExistingAdmin] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
-
   useEffect(() => {
     const checkSession = async () => {
       const { count } = await supabase
@@ -50,7 +47,6 @@ const AdminAuth = () => {
     });
     return () => subscription.unsubscribe();
   }, [navigate]);
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -91,7 +87,6 @@ const AdminAuth = () => {
       setIsLoading(false);
     }
   };
-
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -154,7 +149,6 @@ const AdminAuth = () => {
       setIsLoading(false);
     }
   };
-
   if (checkingSession) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -162,7 +156,6 @@ const AdminAuth = () => {
       </div>
     );
   }
-
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="card-simple p-8 w-full max-w-md animate-in slide-in-from-bottom-4 duration-500">
@@ -240,5 +233,4 @@ const AdminAuth = () => {
     </div>
   );
 };
-
 export default AdminAuth;
