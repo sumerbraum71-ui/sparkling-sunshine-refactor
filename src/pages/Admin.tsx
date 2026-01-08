@@ -839,7 +839,7 @@ const Admin = () => {
     const { data: { session } } = await supabase.auth.getSession();
     
     if (!session) {
-      navigate('/admin/login');
+      navigate('/BOOM/auth');
       return;
     }
 
@@ -852,7 +852,7 @@ const Admin = () => {
 
     if (error || !adminData) {
       await supabase.auth.signOut();
-      navigate('/admin/login');
+      navigate('/BOOM/auth');
       return;
     }
 
@@ -1405,7 +1405,7 @@ const Admin = () => {
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();
-                  navigate('/admin/login');
+                  navigate('/BOOM/auth');
                 }}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
               >
