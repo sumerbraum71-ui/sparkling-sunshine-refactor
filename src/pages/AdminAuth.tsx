@@ -13,19 +13,10 @@ const AdminAuth = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [hasExistingAdmin, setHasExistingAdmin] = useState(true);
-  const [isAccessGranted, setIsAccessGranted] = useState(() => {
-    return localStorage.getItem('boom_admin_access') === 'granted';
-  });
-  const [accessCodeInput, setAccessCodeInput] = useState('');
-  const [accessError, setAccessError] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!isAccessGranted) {
-      setCheckingSession(false);
-      return;
-    }
     const checkSession = async () => {
       const { count } = await supabase
         .from('admin_auth')
@@ -58,41 +49,7 @@ const AdminAuth = () => {
       }
     });
     return () => subscription.unsubscribe();
-  }, [navigate, isAccessGranted]);
-
-  const handleAccessSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAccessError(false);
-    try {
-      const { data, error } = await supabase.rpc('verify_admin_access' as any, {
-        access_code: accessCodeInput,
-      });
-      if (error) throw error;
-      if (data === true) {
-        localStorage.setItem('boom_admin_access', 'granted');
-        setIsAccessGranted(true);
-        toast({
-          title: 'تم التحقق بنجاح',
-          description: 'مرحباً بك في لوحة التحكم',
-        });
-        setCheckingSession(true);
-      } else {
-        setAccessError(true);
-        toast({
-          title: 'خطأ',
-          description: 'كود الأمان غير صحيح',
-          variant: 'destructive',
-        });
-      }
-    } catch (err) {
-      console.error('Access verification error:', err);
-      toast({
-        title: 'خطأ',
-        description: 'حدث خطأ أثناء التحقق',
-        variant: 'destructive',
-      });
-    }
-  };
+  }, [navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,45 +159,6 @@ const AdminAuth = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!isAccessGranted) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <div className="card-simple p-8 w-full max-w-md animate-in fade-in zoom-in duration-300">
-          <div className="text-center mb-8">
-            <div className="bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-primary" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">التحقق الأمني</h1>
-            <p className="text-muted-foreground">
-              الرجاء إدخال كود الأمان للمتابعة
-            </p>
-          </div>
-          <form onSubmit={handleAccessSubmit} className="space-y-6">
-            <div className="relative">
-              <input
-                type="password"
-                value={accessCodeInput}
-                onChange={(e) => setAccessCodeInput(e.target.value)}
-                className={`input-field w-full text-center text-lg tracking-widest ${accessError ? 'border-destructive' : ''}`}
-                placeholder="أدخل الكود هنا"
-                autoFocus
-              />
-            </div>
-            <button
-              type="submit"
-              className="btn-primary w-full py-3 hover:scale-105 transition-transform"
-            >
-              تحقق ومتابعة
-            </button>
-          </form>
-          <div className="mt-8 text-center text-xs text-muted-foreground">
-            هذا الإجراء مطلوب فقط للمتصفحات الجديدة
-          </div>
-        </div>
       </div>
     );
   }
