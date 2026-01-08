@@ -14,16 +14,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    // هذا السطر يخفي الكود، لكنه لا يحتاج لأداة terser التي سببت المشكلة
     sourcemap: false,
-    minify: "terser",
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-      },
-      format: {
-        comments: false,
-      },
-    },
   },
 }));
